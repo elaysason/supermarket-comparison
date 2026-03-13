@@ -28,9 +28,24 @@ class BaseScraper(ABC):
     def chain_code(self) -> str:
         pass
 
-    def get_latest_file_url(selfself, file_type: FileType) -> Optional[str]:
+    @property
+    def item_tag_name(self) -> str:
+        """Override this if the XML structure uses a different tag for items."""
+        return "Product"
+
+    @abstractmethod
+    def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
+        """returns the latest file URL for the given file type.
+
+        Args:
+            file_type: Requested file type (PriceFull, PriceDelta, PromoFull, PromoDelta
+            ,Stores)
+
+        Returns:
+            str: The latest file URL, or None if not found."""
         pass
 
     @abstractmethod
     def parse(self, file_path: str) -> Generator[Dict[str, Any], None, None]:
+        """Parses the given file and yields product data as dictionaries."""
         pass
