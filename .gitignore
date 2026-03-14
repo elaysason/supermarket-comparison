@@ -5,3 +5,8 @@ venv/
 
 chains_downloads/
 
+.vscode/settings.json
+app/__pycache__/__init__.cpython-312.pyc
+app/__pycache__/models.cpython-312.pyc
+app/scrapers/__pycache__/base.cpython-312.pyc
+app/scrapers/__pycache__/common.cpython-312.pyc
