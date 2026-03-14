@@ -111,7 +111,6 @@ class PriceModel(BaseModel):
     store_id: int
     barcode: BarcodeType
     price: float
-    original_price: Optional[float] = None
     price_update_date: datetime
 
     # Excluded fields: Used ONLY for the PPU calculation, never saved to DB

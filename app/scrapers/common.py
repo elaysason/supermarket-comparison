@@ -76,16 +76,16 @@ class CommonXMLScraper(BaseScraper):
 
         try:
             for event, elem in context:
-                if elem.tag in VALID_TAGS:
-                    processed_item = self._process_single_item(elem)
-                    if processed_item:
-                        items_found += 1
-                        yield processed_item
+                try:
+                    if elem.tag in VALID_TAGS:
+                        processed_item = self._process_single_item(elem)
+                        if processed_item:
+                            items_found += 1
+                            yield processed_item
 
-                    elem.clear()
-                    parent = elem.getparent()
-                    if parent is not None:
-                        parent.remove(elem)
+                except Exception as e:
+                    print(f"Error processing element {elem.tag}: {e}")
+                    continue
 
         except ET.ParseError as e:
             # logger.error כולל exc_info=True ידפיס גם את ה-Stack Trace!
@@ -102,6 +102,9 @@ class CommonXMLScraper(BaseScraper):
                 "product_name": findtext_multi(elem, "ItemName"),
                 "unit_name": findtext_multi(elem, "UnitMeasure", "UnitOfMeasure"),
                 "total_quantity": float(findtext_multi(elem, "Quantity", default="0")),
+                "manufacturer_name": findtext_multi(
+                    elem, "ManufactureName", "ManufacturerName"
+                ),
             }
             price_data = {
                 "store_id": int(findtext_multi(elem, "StoreID", default="0")),
