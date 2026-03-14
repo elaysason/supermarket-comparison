@@ -78,7 +78,6 @@ class CommonXMLScraper(BaseScraper):
             for event, elem in context:
                 if elem.tag in VALID_TAGS:
                     processed_item = self._process_single_item(elem)
-                    print(processed_item)
                     if processed_item:
                         items_found += 1
                         yield processed_item
@@ -97,8 +96,6 @@ class CommonXMLScraper(BaseScraper):
         Takes a single XML element, extracts the required fields,
         and builds Pydantic Product and Price objects.
         """
-        # This is a placeholder implementation. The actual field extraction
-        # logic will depend on the XML structure and the required fields.
         try:
             product_data = {
                 "barcode": findtext_multi(elem, "ItemCode"),
@@ -106,7 +103,6 @@ class CommonXMLScraper(BaseScraper):
                 "unit_name": findtext_multi(elem, "UnitMeasure", "UnitOfMeasure"),
                 "total_quantity": float(findtext_multi(elem, "Quantity", default="0")),
             }
-
             price_data = {
                 "store_id": int(findtext_multi(elem, "StoreID", default="0")),
                 "barcode": product_data["barcode"],
@@ -115,13 +111,12 @@ class CommonXMLScraper(BaseScraper):
                     findtext_multi(elem, "PriceUpdateDate")
                 ),
             }
-
-            # Here you would typically create Pydantic models and return them
-            # For example:
             product_model = ProductModel(**product_data)
-            price_model = PriceModel(**price_data)
-            # return {"product": product_model, "price": price_model}
+            # Used price model calc and unit name for PPU calculation, but not saved to DB
+            price_data["calc_quantity"] = product_model.total_quantity
+            price_data["calc_unit_name"] = product_model.unit_name
 
+            price_model = PriceModel(**price_data)
             return {"product": product_model, "price": price_model}
 
         except Exception as e:
