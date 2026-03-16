@@ -149,7 +149,6 @@ class ShufersalScraper(CommonXMLScraper):
         """
         Convenience method to download the latest price file into the chain-specific folder.
         """
-        # Format "Shufersal" -> "shufersal", or "Rami Levy" -> "rami_levy" to match your folders
         safe_chain_name = self.chain_name.lower().replace(" ", "_")
         target_dir = os.path.join(base_dir, safe_chain_name)
 
@@ -160,10 +159,7 @@ class ShufersalScraper(CommonXMLScraper):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = os.path.join(target_dir, f"pricefull_{timestamp}.xml")
 
-        # 1. Fetch the URL via the background API
         self.get_latest_file_url(FileType.PRICE_FULL)
-
-        # 2. Stream, unzip, and save directly to chains_downloads/shufersal/...
         if self.download_file(output_path):
             return output_path
 
