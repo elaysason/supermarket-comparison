@@ -108,10 +108,11 @@ class ProductModel(BaseModel):
 
 
 class PriceModel(BaseModel):
-    store_id: int
+    chain_code: str
+    store_code: str
     barcode: BarcodeType
     price: float
-    price_update_date: datetime
+    update_date: datetime
 
     # Excluded fields: Used ONLY for the PPU calculation, never saved to DB
     calc_quantity: Optional[float] = Field(default=None, exclude=True)

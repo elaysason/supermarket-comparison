@@ -4,7 +4,7 @@ from typing import Any, Generator, List
 import psycopg
 from dotenv import load_dotenv
 
-from app.models import PriceModel
+from app.models import PriceModel, ProductModel
 
 load_dotenv()
 
@@ -22,6 +22,16 @@ class SupabaseRepository:
                 "Fatal: Missing one or more database environment variables in .env"
             )
 
+    def _connect(self):
+        """Creates a new database connection."""
+        return psycopg.connect(
+            user=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port,
+            dbname=self.dbname,
+        )
+
     def _chunk_data(
         self, data: List[Any], chunk_size: int = 1000
     ) -> Generator[List[Any], None, None]:
@@ -29,45 +39,89 @@ class SupabaseRepository:
         for i in range(0, len(data), chunk_size):
             yield data[i : i + chunk_size]
 
-    def upsert_prices(self, store_id: int, prices: List[PriceModel]):
-        """Executes a binary bulk UPSERT."""
+    def upsert_products(self, products: List[ProductModel]):
+        """Bulk upsert products into the products table."""
+        if not products:
+            print("No products to insert. Skipping.")
+            return
+
+        upsert_query = """
+            INSERT INTO products (
+                barcode,
+                product_name,
+                family_id,
+                image_url,
+                unit_name,
+                total_quantity,
+                manufacturer_name
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (barcode) DO UPDATE SET
+                product_name = EXCLUDED.product_name,
+                unit_name = EXCLUDED.unit_name,
+                total_quantity = EXCLUDED.total_quantity,
+                manufacturer_name = EXCLUDED.manufacturer_name;
+        """
+
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    for chunk in self._chunk_data(products):
+                        data_tuples = [
+                            (
+                                p.barcode,
+                                p.product_name,
+                                p.family_id,
+                                p.image_url,
+                                p.unit_name,
+                                p.total_quantity,
+                                p.manufacturer_name,
+                            )
+                            for p in chunk
+                        ]
+                        cur.executemany(upsert_query, data_tuples)
+
+                conn.commit()
+                print(f"Successfully upserted {len(products)} products.")
+
+        except Exception as e:
+            print(f"Product insertion failed: {e}")
+            raise
+
+    def upsert_prices(self, prices: List[PriceModel]):
+        """Executes a bulk UPSERT using the composite natural key (chain_code, store_code, barcode)."""
         if not prices:
             print("No prices to insert. Skipping.")
             return
 
         upsert_query = """
             INSERT INTO prices (
-                store_id, 
-                barcode, 
-                price, 
+                chain_code,
+                store_code,
+                barcode,
+                price,
                 price_per_unit,
                 update_date
-            ) 
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (store_id, barcode) DO UPDATE SET
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (chain_code, store_code, barcode) DO UPDATE SET
                 price = EXCLUDED.price,
                 price_per_unit = EXCLUDED.price_per_unit,
                 update_date = EXCLUDED.update_date;
         """
 
         try:
-            with psycopg.connect(
-                user=self.user,
-                password=self.password,
-                host=self.host,
-                port=self.port,
-                dbname=self.dbname,
-            ) as conn:
+            with self._connect() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(prices):
-                        # Translate Pydantic models -> pure Python tuples
                         data_tuples = [
                             (
-                                store_id,
+                                p.chain_code,
+                                p.store_code,
                                 p.barcode,
                                 p.price,
                                 p.price_per_unit,
-                                p.price_update_date,
+                                p.update_date,
                             )
                             for p in chunk
                         ]
@@ -77,7 +131,8 @@ class SupabaseRepository:
                 # Commit the transaction only when ALL chunks succeed.
                 conn.commit()
                 print(
-                    f"Successfully upserted {len(prices)} rows for Store ID {store_id}."
+                    f"Successfully upserted {len(prices)} prices for "
+                    f"chain={prices[0].chain_code}, store={prices[0].store_code}."
                 )
 
         except Exception as e:

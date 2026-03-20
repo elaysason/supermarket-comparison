@@ -32,7 +32,7 @@ class ShufersalScraper(CommonXMLScraper):
     def __init__(self):
         super().__init__(
             chain_name="Shufersal",
-            chain_code="7290055746677",  # Shufersal's chain code
+            chain_code="7290027600007",  # Shufersal's chain code
             online_store_id="413",
         )
         self._cached_file_url: Optional[str] = None

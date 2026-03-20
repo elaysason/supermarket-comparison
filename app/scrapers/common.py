@@ -107,12 +107,11 @@ class CommonXMLScraper(BaseScraper):
                 ),
             }
             price_data = {
-                "store_id": int(findtext_multi(elem, "StoreID", default="0")),
+                "chain_code": self._chain_code,
+                "store_code": self._online_store_id,
                 "barcode": product_data["barcode"],
                 "price": float(findtext_multi(elem, "Price", "ItemPrice")),
-                "price_update_date": parse_xml_date(
-                    findtext_multi(elem, "PriceUpdateDate")
-                ),
+                "update_date": parse_xml_date(findtext_multi(elem, "PriceUpdateDate")),
             }
             product_model = ProductModel(**product_data)
             # Used price model calc and unit name for PPU calculation, but not saved to DB
