@@ -107,6 +107,12 @@ class ProductModel(BaseModel):
         return self
 
 
+class StoreModel(BaseModel):
+    chain_code: str
+    store_code: str
+    store_name: Optional[str] = None
+
+
 class PriceModel(BaseModel):
     chain_code: str
     store_code: str

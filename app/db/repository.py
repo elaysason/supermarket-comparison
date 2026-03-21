@@ -4,7 +4,7 @@ from typing import Any, Generator, List
 import psycopg
 from dotenv import load_dotenv
 
-from app.models import PriceModel, ProductModel
+from app.models import PriceModel, ProductModel, StoreModel
 
 load_dotenv()
 
@@ -39,6 +39,51 @@ class SupabaseRepository:
         for i in range(0, len(data), chunk_size):
             yield data[i : i + chunk_size]
 
+    def has_prices_for_store(self, chain_code: str, store_code: str) -> bool:
+        """Check if prices already exist for a specific chain and store."""
+        query = """
+            SELECT EXISTS (
+                SELECT 1 FROM prices
+                WHERE chain_code = %s AND store_code = %s
+            );
+        """
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (chain_code, store_code))
+                    return cur.fetchone()[0]
+        except Exception as e:
+            print(f"Error checking existing prices: {e}")
+            return False
+
+    def upsert_store(self, store: StoreModel):
+        """Upsert a store into the stores table."""
+        upsert_query = """
+            INSERT INTO stores (chain_code, store_code, store_name)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (chain_code, store_code) DO UPDATE SET
+                store_name = EXCLUDED.store_name;
+        """
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        upsert_query,
+                        (
+                            store.chain_code,
+                            store.store_code,
+                            store.store_name,
+                        ),
+                    )
+                conn.commit()
+                print(
+                    f"Upserted store {store.store_code} "
+                    f"({store.store_name})."
+                )
+        except Exception as e:
+            print(f"Store upsert failed: {e}")
+            raise
+
     def upsert_products(self, products: List[ProductModel]):
         """Bulk upsert products into the products table."""
         if not products:
@@ -49,13 +94,13 @@ class SupabaseRepository:
             INSERT INTO products (
                 barcode,
                 product_name,
-                family_id,
                 image_url,
                 unit_name,
                 total_quantity,
                 manufacturer_name
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
+
             ON CONFLICT (barcode) DO UPDATE SET
                 product_name = EXCLUDED.product_name,
                 unit_name = EXCLUDED.unit_name,
@@ -71,7 +116,6 @@ class SupabaseRepository:
                             (
                                 p.barcode,
                                 p.product_name,
-                                p.family_id,
                                 p.image_url,
                                 p.unit_name,
                                 p.total_quantity,

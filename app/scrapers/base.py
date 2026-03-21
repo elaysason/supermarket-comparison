@@ -8,6 +8,7 @@ class FileType(Enum):
     PRICE_DELETA = "Price"
     PROMO = "PromoFull"
     PROMO_DELETA = "Promo"
+    STORES = "Stores"
 
 
 class BaseScraper(ABC):
