@@ -18,13 +18,13 @@ class ShufersalCategory:
 class ShufersalScraper(CommonXMLScraper):
     """Shufersal supermarket scraper implementation."""
 
-    BASE_URL = "https://prices.shufersal.co.il"
     UPDATE_CATEGORY_ENDPOINT = "/FileObject/UpdateCategory"
 
     def __init__(self):
         super().__init__(
             chain_name="Shufersal",
             chain_code="7290027600007",
+            base_url="https://prices.shufersal.co.il",
         )
 
     def _file_type_to_category(self, file_type: FileType) -> Optional[int]:
@@ -48,7 +48,7 @@ class ShufersalScraper(CommonXMLScraper):
             return self._cached_file_url
 
         try:
-            url = f"{self.BASE_URL}{self.UPDATE_CATEGORY_ENDPOINT}"
+            url = f"{self._base_url}{self.UPDATE_CATEGORY_ENDPOINT}"
             query_params = {
                 "catId": category,
                 "storeId": self.online_store or 0,

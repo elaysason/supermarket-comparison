@@ -51,15 +51,16 @@ def _get_valid_tags(file_path: str) -> Set[str]:
 
 
 class CommonXMLScraper(BaseScraper):
-    def __init__(self, chain_name: str, chain_code: str):
+    def __init__(self, chain_name: str, chain_code: str, base_url: str):
         self._chain_name = chain_name
         self._chain_code = chain_code
+        self._base_url = base_url
         self._online_store_id: Optional[str] = None
         self._cached_file_url: Optional[str] = None
         self._session = self._create_session()
 
     @staticmethod
-    def _create_session() -> requests.Session:
+    def _create_session(verify: bool = True) -> requests.Session:
         """Create a requests session with retry logic."""
         session = requests.Session()
         retry_strategy = Retry(
@@ -71,6 +72,7 @@ class CommonXMLScraper(BaseScraper):
         adapter = HTTPAdapter(max_retries=retry_strategy)
         session.mount("https://", adapter)
         session.mount("http://", adapter)
+        session.verify = verify
         return session
 
     @property
@@ -165,9 +167,7 @@ class CommonXMLScraper(BaseScraper):
                         store_id = findtext_multi(elem, "STOREID", "StoreId")
                         if store_id:
                             self._online_store_id = store_id.strip()
-                            store_name = findtext_multi(
-                                elem, "STORENAME", "StoreName"
-                            )
+                            store_name = findtext_multi(elem, "STORENAME", "StoreName")
                             print(f"Found online store: {store_id.strip()}")
                             return StoreModel(
                                 chain_code=self._chain_code,
