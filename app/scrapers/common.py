@@ -1,5 +1,6 @@
 # import xml.etree.ElementTree as ET
 import gzip
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,8 @@ from urllib3.util.retry import Retry
 
 from app.models import PriceModel, ProductModel, StoreModel
 from app.scrapers.base import BaseScraper, FileType
+
+logger = logging.getLogger(__name__)
 
 # Module-level tag mapping based on file path patterns
 TAG_MAPPING = {
@@ -51,11 +54,17 @@ def _get_valid_tags(file_path: str) -> Set[str]:
 
 
 class CommonXMLScraper(BaseScraper):
-    def __init__(self, chain_name: str, chain_code: str, base_url: str):
+    def __init__(
+        self,
+        chain_name: str,
+        chain_code: str,
+        base_url: str,
+        default_store_id: Optional[str] = None,
+    ):
         self._chain_name = chain_name
         self._chain_code = chain_code
         self._base_url = base_url
-        self._online_store_id: Optional[str] = None
+        self._online_store_id: Optional[str] = default_store_id
         self._cached_file_url: Optional[str] = None
         self._session = self._create_session()
 
@@ -88,13 +97,13 @@ class CommonXMLScraper(BaseScraper):
         return self._chain_code
 
     def parse(self, file_path):
-        print(f"Starting parse for {file_path}...")
+        logger.info("Starting parse for %s", file_path)
 
         context = ET.iterparse(file_path, events=("end",))
         VALID_TAGS = _get_valid_tags(file_path)
 
         if not VALID_TAGS:
-            print(f"Warning: No valid tags found for file path: {file_path}")
+            logger.warning("No valid tags found for file path: %s", file_path)
             return
 
         items_found = 0
@@ -109,12 +118,11 @@ class CommonXMLScraper(BaseScraper):
                             yield processed_item
 
                 except Exception as e:
-                    print(f"Error processing element {elem.tag}: {e}")
+                    logger.error("Error processing element %s: %s", elem.tag, e)
                     continue
 
-        except ET.ParseError as e:
-            # logger.error כולל exc_info=True ידפיס גם את ה-Stack Trace!
-            print(f"XML Parse Error in {file_path}: {e}")
+        except ET.ParseError:
+            logger.error("XML Parse Error in %s", file_path, exc_info=True)
 
     def _process_single_item(self, elem: ET.Element) -> Optional[Dict[str, Any]]:
         """
@@ -147,7 +155,7 @@ class CommonXMLScraper(BaseScraper):
             return {"product": product_model, "price": price_model}
 
         except Exception as e:
-            print(f"Error processing item: {e}")
+            logger.error("Error processing item: %s", e)
             return None
 
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
@@ -168,20 +176,20 @@ class CommonXMLScraper(BaseScraper):
                         if store_id:
                             self._online_store_id = store_id.strip()
                             store_name = findtext_multi(elem, "STORENAME", "StoreName")
-                            print(f"Found online store: {store_id.strip()}")
+                            logger.info("Found online store: %s", store_id.strip())
                             return StoreModel(
                                 chain_code=self._chain_code,
                                 store_code=self._online_store_id,
                                 store_name=store_name,
                             )
         except Exception as e:
-            print(f"Error parsing stores file: {e}")
+            logger.error("Error parsing stores file: %s", e)
         return None
 
     def download_file(self, file_path: str) -> bool:
         """Downloads and decompresses a gzipped file from the cached URL."""
         if not self._cached_file_url:
-            print("No URL available to download")
+            logger.warning("No URL available to download")
             return False
 
         try:
@@ -204,14 +212,14 @@ class CommonXMLScraper(BaseScraper):
                         f_out.write(chunk)
 
             os.remove(gz_path)
-            print(f"Downloaded and extracted to {file_path}")
+            logger.info("Downloaded and extracted to %s", file_path)
             return True
 
         except requests.RequestException as e:
-            print(f"Download error: {e}")
+            logger.error("Download error: %s", e)
             return False
         except Exception as e:
-            print(f"Error processing file: {e}")
+            logger.error("Error processing file: %s", e)
             return False
 
     def download_latest(
@@ -233,8 +241,10 @@ class CommonXMLScraper(BaseScraper):
         prefix = prefix_map.get(file_type, file_type.value.lower())
         output_path = os.path.join(target_dir, f"{prefix}_{timestamp}.xml")
 
-        self.get_latest_file_url(file_type)
-        if self.download_file(output_path):
-            return output_path
+        url = self.get_latest_file_url(file_type)
+        if url:
+            self._cached_file_url = url
+            if self.download_file(output_path):
+                return output_path
 
         return None

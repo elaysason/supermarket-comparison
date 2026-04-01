@@ -1,10 +1,13 @@
 import html
+import logging
 from typing import Optional
 
 from bs4 import BeautifulSoup
 
 from app.scrapers.base import FileType
 from app.scrapers.common import CommonXMLScraper
+
+logger = logging.getLogger(__name__)
 
 
 class ShufersalCategory:
@@ -47,6 +50,8 @@ class ShufersalScraper(CommonXMLScraper):
         if self._cached_file_url:
             return self._cached_file_url
 
+        logger.info("Fetching latest %s file URL...", file_type.value)
+
         try:
             url = f"{self._base_url}{self.UPDATE_CATEGORY_ENDPOINT}"
             query_params = {
@@ -66,12 +71,12 @@ class ShufersalScraper(CommonXMLScraper):
                 raw_url = tag.get("href", "")
                 clean_url = html.unescape(raw_url)
                 self._cached_file_url = clean_url
-                print(f"Successfully found URL: {clean_url}")
+                logger.info("Found latest %s URL: %s", file_type.value, clean_url)
                 return clean_url
             else:
-                print("Could not find 'לחץ להורדה' link in the returned HTML.")
+                logger.warning("No %s files found.", file_type.value)
 
         except Exception as e:
-            print(f"Error fetching Shufersal price URL via API: {e}")
+            logger.error("Error fetching %s file URL: %s", file_type.value, e)
 
         return None

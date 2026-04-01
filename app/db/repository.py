@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any, Generator, List
 
@@ -5,6 +6,8 @@ import psycopg
 from dotenv import load_dotenv
 
 from app.models import PriceModel, ProductModel, StoreModel
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -53,7 +56,7 @@ class SupabaseRepository:
                     cur.execute(query, (chain_code, store_code))
                     return cur.fetchone()[0]
         except Exception as e:
-            print(f"Error checking existing prices: {e}")
+            logger.error("Error checking existing prices: %s", e)
             return False
 
     def upsert_store(self, store: StoreModel):
@@ -76,18 +79,19 @@ class SupabaseRepository:
                         ),
                     )
                 conn.commit()
-                print(
-                    f"Upserted store {store.store_code} "
-                    f"({store.store_name})."
+                logger.info(
+                    "Upserted store %s (%s)",
+                    store.store_code,
+                    store.store_name,
                 )
         except Exception as e:
-            print(f"Store upsert failed: {e}")
+            logger.error("Store upsert failed: %s", e)
             raise
 
     def upsert_products(self, products: List[ProductModel]):
         """Bulk upsert products into the products table."""
         if not products:
-            print("No products to insert. Skipping.")
+            logger.info("No products to insert. Skipping.")
             return
 
         upsert_query = """
@@ -126,16 +130,16 @@ class SupabaseRepository:
                         cur.executemany(upsert_query, data_tuples)
 
                 conn.commit()
-                print(f"Successfully upserted {len(products)} products.")
+                logger.info("Successfully upserted %d products.", len(products))
 
         except Exception as e:
-            print(f"Product insertion failed: {e}")
+            logger.error("Product insertion failed: %s", e)
             raise
 
     def upsert_prices(self, prices: List[PriceModel]):
         """Executes a bulk UPSERT using the composite natural key (chain_code, store_code, barcode)."""
         if not prices:
-            print("No prices to insert. Skipping.")
+            logger.info("No prices to insert. Skipping.")
             return
 
         upsert_query = """
@@ -174,11 +178,13 @@ class SupabaseRepository:
 
                 # Commit the transaction only when ALL chunks succeed.
                 conn.commit()
-                print(
-                    f"Successfully upserted {len(prices)} prices for "
-                    f"chain={prices[0].chain_code}, store={prices[0].store_code}."
+                logger.info(
+                    "Successfully upserted %d prices for chain=%s, store=%s.",
+                    len(prices),
+                    prices[0].chain_code,
+                    prices[0].store_code,
                 )
 
         except Exception as e:
-            print(f"Database insertion failed: {e}")
+            logger.error("Database insertion failed: %s", e)
             raise
