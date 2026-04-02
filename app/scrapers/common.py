@@ -2,8 +2,8 @@
 import gzip
 import logging
 import os
+import zipfile
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
 import requests
@@ -39,7 +39,12 @@ def parse_xml_date(date_str: str) -> datetime:
         return datetime.now()  # or return None
     # Replace / with - for Python's datetime parser
     date_str = date_str.replace("/", "-")
-    return datetime.strptime(date_str, "%Y-%m-%d %H:%M")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    return datetime.now()
 
 
 def _get_valid_tags(file_path: str) -> Set[str]:
@@ -132,7 +137,8 @@ class CommonXMLScraper(BaseScraper):
         try:
             product_data = {
                 "barcode": findtext_multi(elem, "ItemCode"),
-                "product_name": findtext_multi(elem, "ItemName"),
+                # The product name might be under different tags in different chains
+                "product_name": findtext_multi(elem, "ItemName", "ItemNm"),
                 "unit_name": findtext_multi(elem, "UnitMeasure", "UnitOfMeasure"),
                 "total_quantity": float(findtext_multi(elem, "Quantity", default="0")),
                 "manufacturer_name": findtext_multi(
@@ -147,7 +153,7 @@ class CommonXMLScraper(BaseScraper):
                 "update_date": parse_xml_date(findtext_multi(elem, "PriceUpdateDate")),
             }
             product_model = ProductModel(**product_data)
-            # Used price model calc and unit name for PPU calculation, but not saved to DB
+            # Used for PPU calculation; not saved to DB.
             price_data["calc_quantity"] = product_model.total_quantity
             price_data["calc_unit_name"] = product_model.unit_name
 
@@ -172,7 +178,8 @@ class CommonXMLScraper(BaseScraper):
                 if elem.tag in ("Store", "STORE"):
                     stype = findtext_multi(elem, "STORETYPE", "StoreType", default="")
                     if stype.strip() == store_type:
-                        store_id = findtext_multi(elem, "STOREID", "StoreId")
+                        # Store id tag varies by chain, so try multiple options.
+                        store_id = findtext_multi(elem, "STOREID", "StoreId", "StoreID")
                         if store_id:
                             self._online_store_id = store_id.strip()
                             store_name = findtext_multi(elem, "STORENAME", "StoreName")
@@ -187,7 +194,7 @@ class CommonXMLScraper(BaseScraper):
         return None
 
     def download_file(self, file_path: str) -> bool:
-        """Downloads and decompresses a gzipped file from the cached URL."""
+        """Downloads and decompresses a gzipped or zipped file from the cached URL."""
         if not self._cached_file_url:
             logger.warning("No URL available to download")
             return False
@@ -198,20 +205,47 @@ class CommonXMLScraper(BaseScraper):
             )
             response.raise_for_status()
 
-            gz_path = f"{file_path}.gz"
-            with open(gz_path, "wb") as f:
+            tmp_path = f"{file_path}.tmp"
+            with open(tmp_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
 
-            with gzip.open(gz_path, "rb") as f_in:
-                with open(file_path, "wb") as f_out:
-                    while True:
-                        chunk = f_in.read(8192)
-                        if not chunk:
-                            break
-                        f_out.write(chunk)
+            # Detect format by magic bytes
+            with open(tmp_path, "rb") as f:
+                magic = f.read(2)
 
-            os.remove(gz_path)
+            if magic == b"PK":  # ZIP file
+                with zipfile.ZipFile(tmp_path) as zf:
+                    all_names = zf.namelist()
+                    xml_names = [n for n in all_names if n.endswith(".xml")]
+                    if xml_names:
+                        name = xml_names[0]
+                    elif all_names:
+                        name = all_names[0]
+                    else:
+                        logger.error("ZIP archive contains no files: %s", tmp_path)
+                        return False
+
+                    with zf.open(name) as src, open(file_path, "wb") as dst:
+                        while True:
+                            chunk = src.read(8192)
+                            if not chunk:
+                                break
+                            dst.write(chunk)
+            elif magic == b"\x1f\x8b":  # Gzip file
+                with gzip.open(tmp_path, "rb") as f_in:
+                    with open(file_path, "wb") as f_out:
+                        while True:
+                            chunk = f_in.read(8192)
+                            if not chunk:
+                                break
+                            f_out.write(chunk)
+            else:  # Plain file (e.g. XML with BOM)
+                os.replace(tmp_path, file_path)
+                tmp_path = None
+
+            if tmp_path:
+                os.remove(tmp_path)
             logger.info("Downloaded and extracted to %s", file_path)
             return True
 
@@ -230,19 +264,34 @@ class CommonXMLScraper(BaseScraper):
         """Download the latest price file into the chain folder."""
         safe_chain_name = self.chain_name.lower().replace(" ", "_")
         target_dir = os.path.join(base_dir, safe_chain_name)
-        Path(target_dir).mkdir(parents=True, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        prefix_map = {
-            FileType.PRICE_FULL: "pricefull",
-            FileType.PRICE_DELETA: "price",
-            FileType.STORES: "stores",
-        }
-        prefix = prefix_map.get(file_type, file_type.value.lower())
-        output_path = os.path.join(target_dir, f"{prefix}_{timestamp}.xml")
+        os.makedirs(target_dir, exist_ok=True)
 
         url = self.get_latest_file_url(file_type)
         if url:
+            # Use the remote filename to avoid re-downloading the same file
+            remote_name = url.rsplit("/", 1)[-1].split("?")[0]
+            remote_name = remote_name.strip()
+
+            if not remote_name:
+                logger.warning(
+                    "Could not determine remote filename from URL %s; "
+                    "using timestamp-based name",
+                    url,
+                )
+                remote_name = datetime.now().strftime("download_%Y%m%d%H%M%S.xml")
+
+            # Strip compression extensions to get a clean .xml name
+            for ext in (".gz", ".zip"):
+                if remote_name.lower().endswith(ext):
+                    remote_name = remote_name[: -len(ext)]
+            if not remote_name.lower().endswith(".xml"):
+                remote_name += ".xml"
+            output_path = os.path.join(target_dir, remote_name)
+
+            if os.path.exists(output_path):
+                logger.info("File already downloaded: %s", output_path)
+                return output_path
+
             self._cached_file_url = url
             if self.download_file(output_path):
                 return output_path

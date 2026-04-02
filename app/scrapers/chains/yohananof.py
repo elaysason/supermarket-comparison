@@ -9,19 +9,19 @@ from app.scrapers.common import CommonXMLScraper
 logger = logging.getLogger(__name__)
 
 
-class RamiLeviScraper(CommonXMLScraper):
-    """Rami Levi supermarket scraper implementation."""
+class YohananofScraper(CommonXMLScraper):
+    """Yohananof supermarket scraper implementation."""
 
     LOGIN = "/login"
     LOGIN_POST = "/login/user"
-    USERNAME = "RamiLevi"
+    USERNAME = "yohananof"
 
     def __init__(self):
         super().__init__(
-            chain_name="Rami Levi",
-            chain_code="7290058140886",
+            chain_name="Yohananof",
+            chain_code="7290803800003",
             base_url="https://url.retail.publishedprices.co.il",
-            default_store_id="039",
+            default_store_id="150",
         )
         self._session = self._create_session(verify=False)
         self._authenticated = False
@@ -77,7 +77,7 @@ class RamiLeviScraper(CommonXMLScraper):
         return True
 
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
-        """Fetches the latest file URL using the Rami Levi background API."""
+        """Fetches the latest file URL using the Yohananof background API."""
         if not self._authenticate():
             logger.error("Authentication failed. Cannot fetch file URL.")
             return None

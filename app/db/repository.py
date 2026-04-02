@@ -59,6 +59,24 @@ class SupabaseRepository:
             logger.error("Error checking existing prices: %s", e)
             return False
 
+    def upsert_chain(self, chain_code: str, name: str):
+        """Upsert a chain into the chains table."""
+        upsert_query = """
+            INSERT INTO chains (chain_code, name)
+            VALUES (%s, %s)
+            ON CONFLICT (chain_code) DO UPDATE SET
+                name = EXCLUDED.name;
+        """
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(upsert_query, (chain_code, name))
+                conn.commit()
+                logger.info("Upserted chain %s (%s)", chain_code, name)
+        except Exception as e:
+            logger.error("Chain upsert failed: %s", e)
+            raise
+
     def upsert_store(self, store: StoreModel):
         """Upsert a store into the stores table."""
         upsert_query = """

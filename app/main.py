@@ -4,18 +4,31 @@ from app.db.repository import SupabaseRepository
 from app.scrapers.base import FileType
 from app.scrapers.chains.rami_levi import RamiLeviScraper
 from app.scrapers.chains.shufersal import ShufersalScraper
+from app.scrapers.chains.yohananof import YohananofScraper
 
 logger = logging.getLogger(__name__)
 
 
 def main():
     scrapers = [
-        ShufersalScraper(),
+        YohananofScraper(),
         RamiLeviScraper(),
+        ShufersalScraper(),
     ]
+
     repo = SupabaseRepository()
     for scraper in scrapers:
+        logger.info("Processing scraper for %s", scraper.chain_name)
+
+        # 0. Ensure the chain exists in the DB
+        repo.upsert_chain(scraper.chain_code, scraper.chain_name)
+
         # 1. Download stores file to find the online store
+        logger.info(
+            "Fetching latest stores file for %s (chain code: %s).",
+            scraper.chain_name,
+            scraper.chain_code,
+        )
         stores_path = scraper.download_latest(FileType.STORES)
         if stores_path:
             online_store = scraper.find_online_store(stores_path)
