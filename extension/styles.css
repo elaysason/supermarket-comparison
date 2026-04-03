@@ -1,0 +1,370 @@
+/* Cart Sniper — styles.css */
+
+#cart-sniper-widget {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  width: 320px;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  color: #18181b;
+  direction: rtl;
+  text-align: right;
+  overflow: hidden;
+  animation: cs-in 0.18s ease-out;
+}
+
+@keyframes cs-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.cs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.cs-logo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+}
+
+.cs-close {
+  background: none;
+  border: none;
+  color: #d4d4d8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.12s;
+}
+
+.cs-close:hover {
+  color: #71717a;
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+
+.cs-body {
+  padding: 12px;
+}
+
+.cs-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+  margin-bottom: 3px;
+}
+
+.cs-chain {
+  font-size: 14px;
+  font-weight: 600;
+  color: #18181b;
+  margin-bottom: 4px;
+}
+
+.cs-price {
+  font-size: 28px;
+  font-weight: 700;
+  color: #16a34a;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cs-match {
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.cs-disclaimer {
+  font-size: 10px;
+  color: #d4d4d8;
+}
+
+/* ── Loading state ──────────────────────────────────────────────────────── */
+
+.cart-sniper-loading .cs-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.cs-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #e4e4e7;
+  border-top-color: #a1a1aa;
+  border-radius: 50%;
+  animation: cs-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes cs-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── No-match / error states ─────────────────────────────────────────────── */
+
+.cs-nomatch {
+  font-size: 12px;
+  color: #a1a1aa;
+  line-height: 1.5;
+}
+
+.cs-error-widget .cs-header {
+  border-bottom-color: #fee2e2;
+}
+
+.cs-error {
+  font-size: 12px;
+  color: #dc2626;
+  line-height: 1.5;
+}
+
+/* ── Item breakdown ─────────────────────────────────────────────────────── */
+
+.cs-details {
+  margin-top: 10px;
+  border-top: 1px solid #f4f4f5;
+  padding-top: 8px;
+}
+
+.cs-details-toggle {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  padding: 0;
+  transition: color 0.12s;
+}
+
+.cs-details-toggle:hover {
+  color: #71717a;
+}
+
+.cs-details-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.cs-details[open] .cs-details-toggle::before {
+  content: "▾ ";
+}
+
+.cs-details:not([open]) .cs-details-toggle::before {
+  content: "▸ ";
+}
+
+.cs-item-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cs-item-list::-webkit-scrollbar {
+  width: 3px;
+}
+
+.cs-item-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cs-item-list::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border-radius: 2px;
+}
+
+.cs-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 0;
+}
+
+.cs-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #71717a;
+}
+
+.cs-item-matched .cs-item-name {
+  color: #3f3f46;
+}
+
+.cs-item-matched .cs-item-price {
+  font-variant-numeric: tabular-nums;
+  color: #16a34a;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.cs-unit-price {
+  font-size: 10px;
+  color: #d4d4d8;
+  margin-right: 2px;
+}
+
+.cs-qty {
+  font-size: 10px;
+  color: #a1a1aa;
+}
+
+.cs-item-unmatched .cs-item-name {
+  color: #d4d4d8;
+}
+
+.cs-item-notfound {
+  font-size: 10px;
+  color: #e4e4e7;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cs-barcode {
+  font-family: monospace;
+  font-size: 10px;
+  color: #d4d4d8;
+}
+
+/* ── Chain comparison rows ──────────────────────────────────────────────────── */
+
+.cs-chains {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.cs-chain-row {
+  border: 1px solid #f4f4f5;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #fafafa;
+}
+
+.cs-chain-cheapest {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.cs-chain-source {
+  border-color: #e4e4e7;
+  background: #f4f4f5;
+}
+
+.cs-chain-source .cs-chain-name {
+  color: #71717a;
+}
+
+.cs-chain-source .cs-chain-total {
+  color: #71717a;
+}
+
+.cs-chains-divider {
+  border: none;
+  border-top: 1px dashed #e4e4e7;
+  margin: 2px 0 4px;
+}
+
+.cs-chain-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cs-chain-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f3f46;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-chain-cheapest .cs-chain-name {
+  color: #15803d;
+}
+
+.cs-chain-total {
+  font-size: 14px;
+  font-weight: 700;
+  color: #18181b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cs-chain-cheapest .cs-chain-total {
+  color: #16a34a;
+}
+
+.cs-chain-shipping {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+}
+
+.cs-ship-opt {
+  font-size: 11px;
+  color: #71717a;
+  white-space: nowrap;
+}
+
+.cs-ship-opt strong {
+  color: #3f3f46;
+  font-weight: 600;
+}
+
+.cs-ship-fee {
+  color: #a1a1aa;
+  font-weight: 400;
+}
+
+.cs-ship-unavail {
+  opacity: 0.5;
+  font-style: italic;
+}

@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Cart Sniper (MVP)",
+  "version": "1.0",
+  "description": "Compares supermarket cart prices instantly against competitor chains.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.shufersal.co.il/*",
+    "*://*.rami-levy.co.il/*",
+    "*://*.yohananof.co.il/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.shufersal.co.il/*",
+        "*://*.rami-levy.co.il/*",
+        "*://*.yohananof.co.il/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Cart Sniper",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
