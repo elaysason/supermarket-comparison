@@ -11,7 +11,6 @@
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_KEY   = "fepVCPso5nH44S"; // Must match API_KEY in .env and background.js
 const WIDGET_ID = "cart-sniper-widget";
 
 // ─── Chain registry ───────────────────────────────────────────────────────────
@@ -35,7 +34,7 @@ const CHAINS = {
 //
 // A single enum-style state variable replaces all the scattered flags.
 // Transitions:
-//   IDLE  →  WAITING  (run() called, waiting for cart DOM)
+//   IDLE  →  WAITING  (run() called, waiting for carWDt DOM)
 //   WAITING → LOADING (cart items found, API call in flight)
 //   LOADING → SHOWN   (widget rendered)
 //   LOADING → IDLE    (API error — error widget shown, user can retry on nav)

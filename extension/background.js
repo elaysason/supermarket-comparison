@@ -7,8 +7,62 @@
  * from this rule, so we relay the API call through here.
  */
 
-const API_BASE = "http://127.0.0.1:8001";
-const API_KEY  = "fepVCPso5nH44S"; // Must match API_KEY in .env
+const API_BASES = [
+  "http://127.0.0.1:8001",
+  "http://127.0.0.1:8000",
+];
+const API_KEY = "fepVCPso5nH44S"; // Must match API_KEY in .env
+const REQUEST_TIMEOUT_MS = 12000;
+
+function withTimeoutFetch(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+async function compareCart(payload) {
+  let lastError = null;
+
+  for (const base of API_BASES) {
+    try {
+      const response = await withTimeoutFetch(`${base}/api/compare`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": API_KEY,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API error ${response.status}: ${text}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      const isTimeout = error?.name === "AbortError";
+      const isNetworkFailure = /failed to fetch|networkerror|connection/i.test(
+        String(error?.message || "")
+      );
+
+      if (!isTimeout && !isNetworkFailure) {
+        break;
+      }
+    }
+  }
+
+  if (lastError?.name === "AbortError") {
+    throw new Error(
+      `API request timed out after ${REQUEST_TIMEOUT_MS / 1000}s.`
+    );
+  }
+
+  throw lastError || new Error("Unknown API failure.");
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[CartSniper] Extension installed.");
@@ -17,28 +71,16 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type !== "COMPARE_CART") return false;
 
-  fetch(`${API_BASE}/api/compare`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": API_KEY,
-    },
-    body: JSON.stringify({
-      source_chain_code: message.source_chain_code,
-      barcodes: message.barcodes,
-      quantities: message.quantities || {},
-    }),
+  compareCart({
+    source_chain_code: message.source_chain_code,
+    barcodes: message.barcodes,
+    quantities: message.quantities || {},
   })
-    .then((res) => {
-      if (!res.ok) {
-        return res.text().then((t) => {
-          throw new Error(`API error ${res.status}: ${t}`);
-        });
-      }
-      return res.json();
-    })
     .then((data) => sendResponse({ ok: true, data }))
-    .catch((err) => sendResponse({ ok: false, error: err.message }));
+    .catch((err) => sendResponse({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    }));
 
   // Return true to keep the message channel open for the async response
   return true;
