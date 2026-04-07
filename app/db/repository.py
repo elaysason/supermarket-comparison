@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Generator, List
+from typing import Any, Dict, Generator, List, Optional
 
 import psycopg
 from dotenv import load_dotenv
@@ -206,3 +206,201 @@ class SupabaseRepository:
         except Exception as e:
             logger.error("Database insertion failed: %s", e)
             raise
+
+    def get_shipping_costs(self, chain_codes: List[str]) -> Dict[str, Any]:
+        """
+        Returns shipping options for the given chain codes.
+
+        Result shape:
+            {
+                chain_code: [
+                    {
+                        "option_type": "delivery" | "pickup",
+                        "fee": float,
+                        "free_above": float | None,
+                        "min_order": float | None,
+                        "notes": str | None,
+                    },
+                    ...
+                ],
+                ...
+            }
+        """
+        if not chain_codes:
+            return {}
+        query = """
+            SELECT chain_code, option_type, fee, free_above, min_order, notes
+            FROM shipping_costs
+            WHERE chain_code = ANY(%s)
+            ORDER BY chain_code, option_type
+        """
+        result: Dict[str, Any] = {}
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (chain_codes,))
+                    for chain_code, option_type, fee, free_above, min_order, notes in cur.fetchall():
+                        result.setdefault(chain_code, []).append({
+                            "option_type": option_type,
+                            "fee": float(fee),
+                            "free_above": float(free_above) if free_above is not None else None,
+                            "min_order": float(min_order) if min_order is not None else None,
+                            "notes": notes,
+                        })
+        except Exception as e:
+            logger.error("Error fetching shipping costs: %s", e)
+        return result
+
+    def get_product_names(self, barcodes: List[str]) -> Dict[str, str]:
+        """
+        Returns a dict mapping barcode -> product_name for all barcodes that
+        exist in the products table. Barcodes not in the table are absent from
+        the result.
+        """
+        if not barcodes:
+            return {}
+        query = "SELECT barcode, product_name FROM products WHERE barcode = ANY(%s)"
+        result: Dict[str, str] = {}
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (barcodes,))
+                    for barcode, product_name in cur.fetchall():
+                        if product_name:
+                            result[barcode] = product_name
+        except Exception as e:
+            logger.error("Error fetching product names: %s", e)
+        return result
+
+    def get_source_prices(
+        self, source_chain_code: str, barcodes: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Returns price data for the source chain itself (the chain the user is
+        currently shopping at), for the given barcodes.
+
+        Result shape mirrors get_competitor_prices() but contains only one entry:
+            {
+                source_chain_code: {
+                    "chain_name": str,
+                    "items": {barcode: {"product_name": str|None, "price": float}},
+                    "matched_count": int,
+                }
+            }
+        Returns {} if no prices are found.
+        """
+        if not barcodes:
+            return {}
+
+        query = """
+            SELECT
+                p.chain_code,
+                c.name            AS chain_name,
+                p.barcode,
+                pr.product_name,
+                p.price
+            FROM prices p
+            JOIN chains c ON c.chain_code = p.chain_code
+            LEFT JOIN products pr ON pr.barcode = p.barcode
+            WHERE p.chain_code = %s
+              AND p.barcode = ANY(%s)
+        """
+
+        results: Dict[str, Any] = {}
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (source_chain_code, barcodes))
+                    rows = cur.fetchall()
+
+            for chain_code, chain_name, barcode, product_name, price in rows:
+                if chain_code not in results:
+                    results[chain_code] = {"chain_name": chain_name, "items": {}}
+                if barcode not in results[chain_code]["items"]:
+                    results[chain_code]["items"][barcode] = {
+                        "product_name": product_name,
+                        "price": float(price),
+                    }
+
+            for chain_code in results:
+                results[chain_code]["matched_count"] = len(results[chain_code]["items"])
+
+        except Exception as e:
+            logger.error("Error fetching source prices: %s", e)
+
+        return results
+
+    def get_competitor_prices(
+        self, source_chain_code: str, barcodes: List[str]
+    ) -> Dict[str, Any]:
+        """
+        For a list of barcodes, find the total price at every chain EXCEPT
+        the source chain. Returns a dict keyed by chain_code.
+
+        Each entry contains:
+          - chain_name: str
+          - total_price: float  (sum of cheapest-per-barcode prices)
+          - matched_count: int
+          - items: dict[barcode -> {"product_name": str|None, "price": float}]
+
+        Only the first price seen per (chain, barcode) pair is used to avoid
+        double-counting when multiple stores exist for a chain.
+        """
+        if not barcodes:
+            return {}
+
+        query = """
+            SELECT
+                p.chain_code,
+                c.name            AS chain_name,
+                p.barcode,
+                pr.product_name,
+                p.price
+            FROM prices p
+            JOIN chains c ON c.chain_code = p.chain_code
+            LEFT JOIN products pr ON pr.barcode = p.barcode
+            WHERE p.chain_code != %s
+              AND p.barcode = ANY(%s)
+        """
+
+        # results[chain_code] = {
+        #   "chain_name": str,
+        #   "total_price": float,
+        #   "items": {barcode: {"product_name": str|None, "price": float}},
+        # }
+        results: Dict[str, Any] = {}
+
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (source_chain_code, barcodes))
+                    rows = cur.fetchall()
+
+            for chain_code, chain_name, barcode, product_name, price in rows:
+                if chain_code not in results:
+                    results[chain_code] = {
+                        "chain_name": chain_name,
+                        "total_price": 0.0,
+                        "items": {},
+                    }
+                # First price seen per (chain, barcode) wins.
+                if barcode not in results[chain_code]["items"]:
+                    results[chain_code]["items"][barcode] = {
+                        "product_name": product_name,
+                        "price": float(price),
+                    }
+                    results[chain_code]["total_price"] += float(price)
+
+            # Round totals and compute matched_count
+            for chain_code in results:
+                results[chain_code]["total_price"] = round(
+                    results[chain_code]["total_price"], 2
+                )
+                results[chain_code]["matched_count"] = len(
+                    results[chain_code]["items"]
+                )
+
+        except Exception as e:
+            logger.error("Error fetching competitor prices: %s", e)
+
+        return results
