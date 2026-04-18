@@ -2,8 +2,8 @@ import logging
 import os
 from typing import Any, Dict, Generator, List
 
-import psycopg
 from dotenv import load_dotenv
+from psycopg_pool import ConnectionPool
 
 from app.models import PriceModel, ProductModel, StoreModel
 
@@ -12,29 +12,23 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-class SupabaseRepository:
-    def __init__(self):
-        self.user = os.getenv("user")
-        self.password = os.getenv("password")
-        self.host = os.getenv("host")
-        self.port = os.getenv("port")
-        self.dbname = os.getenv("dbname")
-
-        if not all([self.user, self.password, self.host, self.port, self.dbname]):
-            raise ValueError(
-                "Fatal: Missing one or more database environment variables in .env"
-            )
-
-    def _connect(self):
-        """Creates a new database connection."""
-        return psycopg.connect(
-            user=self.user,
-            password=self.password,
-            host=self.host,
-            port=self.port,
-            dbname=self.dbname,
+def _build_conninfo() -> str:
+    user = os.getenv("user")
+    password = os.getenv("password")
+    host = os.getenv("host")
+    port = os.getenv("port")
+    dbname = os.getenv("dbname")
+    if not all([user, password, host, port, dbname]):
+        raise ValueError(
+            "Fatal: Missing one or more database environment variables in .env"
         )
+    return f"user={user} password={password} host={host} port={port} dbname={dbname}"
 
+
+_pool = ConnectionPool(_build_conninfo(), min_size=1, max_size=5)
+
+
+class SupabaseRepository:
     def _chunk_data(
         self, data: List[Any], chunk_size: int = 1000
     ) -> Generator[List[Any], None, None]:
@@ -51,7 +45,7 @@ class SupabaseRepository:
             );
         """
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_code, store_code))
                     return cur.fetchone()[0]
@@ -68,7 +62,7 @@ class SupabaseRepository:
                 name = EXCLUDED.name;
         """
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(upsert_query, (chain_code, name))
                 conn.commit()
@@ -86,7 +80,7 @@ class SupabaseRepository:
                 store_name = EXCLUDED.store_name;
         """
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         upsert_query,
@@ -131,7 +125,7 @@ class SupabaseRepository:
         """
 
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(products):
                         data_tuples = [
@@ -177,7 +171,7 @@ class SupabaseRepository:
         """
 
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(prices):
                         data_tuples = [
@@ -236,7 +230,7 @@ class SupabaseRepository:
         """
         result: Dict[str, Any] = {}
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_codes,))
                     for (
@@ -275,7 +269,7 @@ class SupabaseRepository:
         query = "SELECT barcode, product_name FROM products WHERE barcode = ANY(%s)"
         result: Dict[str, str] = {}
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (barcodes,))
                     for barcode, product_name in cur.fetchall():
@@ -322,7 +316,7 @@ class SupabaseRepository:
 
         results: Dict[str, Any] = {}
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (source_chain_code, barcodes))
                     rows = cur.fetchall()
@@ -386,7 +380,7 @@ class SupabaseRepository:
         results: Dict[str, Any] = {}
 
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (source_chain_code, barcodes))
                     rows = cur.fetchall()

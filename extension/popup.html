@@ -4,57 +4,91 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cart Sniper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-family: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 13px;
-      color: #111827;
-      background: #ffffff;
-      width: 220px;
-      min-height: 80px;
+      color: #f1f5f9;
+      background: #0f172a;
+      width: 240px;
+      min-height: 90px;
     }
 
     header {
-      background: #1d4ed8;
-      color: #ffffff;
-      padding: 10px 14px;
-      font-weight: 700;
-      font-size: 14px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-accent {
+      width: 3px;
+      height: 16px;
+      background: #f59e0b;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .header-title {
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #f59e0b;
     }
 
     main {
-      padding: 14px;
+      padding: 16px;
     }
 
     #status-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 500;
     }
 
     #status-dot {
-      width: 9px;
-      height: 9px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
     }
 
-    .dot-active   { background: #16a34a; }
-    .dot-inactive { background: #9ca3af; }
+    .dot-active {
+      background: #f59e0b;
+      box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+    }
+
+    .dot-inactive {
+      background: #475569;
+    }
+
+    #status-text {
+      color: #e2e8f0;
+    }
 
     #site-label {
-      margin-top: 8px;
+      margin-top: 10px;
       font-size: 11px;
-      color: #6b7280;
+      color: #64748b;
+      letter-spacing: 0.01em;
     }
   </style>
 </head>
 <body>
-  <header>&#x1F3AF; Cart Sniper</header>
+  <header>
+    <span class="header-accent"></span>
+    <span class="header-title">Cart Sniper</span>
+  </header>
   <main>
     <div id="status-badge">
       <span id="status-dot" class="dot-inactive"></span>

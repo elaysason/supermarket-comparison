@@ -47,7 +47,7 @@ def main():
 
         # 2. Determine file type: use delta if full prices already loaded
         if repo.has_prices_for_store(scraper.chain_code, scraper.online_store):
-            file_type = FileType.PRICE_DELETA
+            file_type = FileType.PRICE_DELTA
             logger.info(
                 "Full prices already exist. Using delta price file for updates."
             )

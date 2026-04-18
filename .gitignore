@@ -11,5 +11,6 @@ __pycache__/
 
 .vscode/
 .kilocode/
+opencode.json
 
 *.xml

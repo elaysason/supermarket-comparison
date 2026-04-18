@@ -312,7 +312,7 @@ function showLoadingWidget() {
   w.className = "cart-sniper-widget cart-sniper-loading";
   w.innerHTML = `
     <div class="cs-header"><span class="cs-logo">Cart Sniper</span></div>
-    <div class="cs-body"><span class="cs-spinner"></span> בודק מחירים...</div>
+    <div class="cs-body"><span class="cs-spinner"></span>בודק מחירים...</div>
   `;
   document.body.appendChild(w);
 }
