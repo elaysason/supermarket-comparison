@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List
 
 import psycopg
 from dotenv import load_dotenv
@@ -239,14 +239,27 @@ class SupabaseRepository:
             with self._connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_codes,))
-                    for chain_code, option_type, fee, free_above, min_order, notes in cur.fetchall():
-                        result.setdefault(chain_code, []).append({
-                            "option_type": option_type,
-                            "fee": float(fee),
-                            "free_above": float(free_above) if free_above is not None else None,
-                            "min_order": float(min_order) if min_order is not None else None,
-                            "notes": notes,
-                        })
+                    for (
+                        chain_code,
+                        option_type,
+                        fee,
+                        free_above,
+                        min_order,
+                        notes,
+                    ) in cur.fetchall():
+                        result.setdefault(chain_code, []).append(
+                            {
+                                "option_type": option_type,
+                                "fee": float(fee),
+                                "free_above": float(free_above)
+                                if free_above is not None
+                                else None,
+                                "min_order": float(min_order)
+                                if min_order is not None
+                                else None,
+                                "notes": notes,
+                            }
+                        )
         except Exception as e:
             logger.error("Error fetching shipping costs: %s", e)
         return result
@@ -304,6 +317,7 @@ class SupabaseRepository:
             LEFT JOIN products pr ON pr.barcode = p.barcode
             WHERE p.chain_code = %s
               AND p.barcode = ANY(%s)
+            ORDER BY p.barcode, p.price ASC
         """
 
         results: Dict[str, Any] = {}
@@ -361,6 +375,7 @@ class SupabaseRepository:
             LEFT JOIN products pr ON pr.barcode = p.barcode
             WHERE p.chain_code != %s
               AND p.barcode = ANY(%s)
+            ORDER BY p.chain_code, p.barcode, p.price ASC
         """
 
         # results[chain_code] = {
@@ -396,9 +411,7 @@ class SupabaseRepository:
                 results[chain_code]["total_price"] = round(
                     results[chain_code]["total_price"], 2
                 )
-                results[chain_code]["matched_count"] = len(
-                    results[chain_code]["items"]
-                )
+                results[chain_code]["matched_count"] = len(results[chain_code]["items"])
 
         except Exception as e:
             logger.error("Error fetching competitor prices: %s", e)

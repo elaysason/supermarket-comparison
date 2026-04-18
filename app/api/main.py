@@ -1,8 +1,8 @@
 import logging
-import os
+import re
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.models import (
@@ -20,7 +20,14 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-API_KEY = os.getenv("API_KEY", "")
+# Allowed origins: Chrome extension origins and localhost for development.
+# In production, replace the regex with your specific extension ID:
+#   r"^chrome-extension://YOUR_EXTENSION_ID_HERE$"
+ALLOWED_ORIGIN_RE = re.compile(
+    r"^chrome-extension://[a-z]{32}$"
+    r"|^https?://127\.0\.0\.1(:\d+)?$"
+    r"|^https?://localhost(:\d+)?$"
+)
 
 app = FastAPI(
     title="Cart Sniper API",
@@ -30,24 +37,28 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["null", "chrome-extension://"],
-    allow_origin_regex=r"chrome-extension://.*",
+    allow_origin_regex=r"chrome-extension://.*|https?://127\.0\.0\.1(:\d+)?|https?://localhost(:\d+)?",
     allow_credentials=False,
     allow_methods=["POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=["Content-Type"],
 )
 
 
-def _verify_api_key(x_api_key: str) -> None:
-    if not API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="API_KEY is not configured on the server.",
-        )
-    if x_api_key != API_KEY:
+def _verify_origin(request: Request) -> None:
+    """
+    Validate that the request comes from a trusted origin.
+
+    Chrome enforces the Origin header on extension requests — web pages
+    cannot spoof a chrome-extension:// origin.  This replaces the static
+    API key approach, which provided no real security in a client-side
+    extension (the key was always extractable from the package).
+    """
+    origin = request.headers.get("origin") or request.headers.get("Origin") or ""
+    if not ALLOWED_ORIGIN_RE.match(origin):
+        logger.warning("Rejected request from origin: %s", origin)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key.",
+            detail="Forbidden: unrecognised origin.",
         )
 
 
@@ -82,9 +93,9 @@ def _calc_shipping_fee(option: dict, cart_total: float) -> tuple[float, bool]:
 @app.post("/api/compare", response_model=CompareResponse)
 def compare_cart(
     request: CompareRequest,
-    x_api_key: str = Header(..., alias="X-API-Key"),
+    raw_request: Request,
 ) -> CompareResponse:
-    _verify_api_key(x_api_key)
+    _verify_origin(raw_request)
 
     if not request.barcodes:
         return CompareResponse(
@@ -123,18 +134,12 @@ def compare_cart(
 
     source_barcodes = src_barcodes_raw & all_competitor_barcodes  # intersection
 
-    def chain_items_total(chain_items: dict) -> float:
-        """Sum price × qty for barcodes in the common comparable set only."""
-        return round(
-            sum(item["price"] * qty(b) for b, item in chain_items.items()
-                if b in source_barcodes),
-            2,
+    if not source_barcodes:
+        src_total = (
+            round(sum(item["price"] * qty(b) for b, item in src["items"].items()), 2)
+            if src
+            else 0.0
         )
-
-    if not competitor_data:
-        src_total = round(
-            sum(item["price"] * qty(b) for b, item in src["items"].items()), 2
-        ) if src else 0.0
 
         source_chain_result: ChainResult | None = None
         if src:
@@ -142,15 +147,19 @@ def compare_cart(
             src_shipping: list[ShippingOption] = []
             for opt in src_shipping_raw.get(request.source_chain_code, []):
                 fee, unavailable = _calc_shipping_fee(opt, src_total)
-                src_shipping.append(ShippingOption(
-                    option_type=opt["option_type"], fee=fee,
-                    notes=opt["notes"], unavailable=unavailable,
-                ))
+                src_shipping.append(
+                    ShippingOption(
+                        option_type=opt["option_type"],
+                        fee=fee,
+                        notes=opt["notes"],
+                        unavailable=unavailable,
+                    )
+                )
             source_chain_result = ChainResult(
                 chain_code=request.source_chain_code,
                 chain_name=src["chain_name"],
                 items_total=src_total,
-                matched_count=len(source_barcodes),
+                matched_count=0,
                 shipping=src_shipping,
             )
 
@@ -173,6 +182,17 @@ def compare_cart(
             ],
         )
 
+    def chain_items_total(chain_items: dict) -> float:
+        """Sum price × qty for barcodes in the common comparable set only."""
+        return round(
+            sum(
+                item["price"] * qty(b)
+                for b, item in chain_items.items()
+                if b in source_barcodes
+            ),
+            2,
+        )
+
     # Fetch shipping costs for all chains in one query
     all_chain_codes = list(competitor_data.keys()) + [request.source_chain_code]
     all_shipping_data = repo.get_shipping_costs(all_chain_codes)
@@ -181,10 +201,14 @@ def compare_cart(
         opts: list[ShippingOption] = []
         for opt in all_shipping_data.get(chain_code, []):
             fee, unavailable = _calc_shipping_fee(opt, cart_total)
-            opts.append(ShippingOption(
-                option_type=opt["option_type"], fee=fee,
-                notes=opt["notes"], unavailable=unavailable,
-            ))
+            opts.append(
+                ShippingOption(
+                    option_type=opt["option_type"],
+                    fee=fee,
+                    notes=opt["notes"],
+                    unavailable=unavailable,
+                )
+            )
         return opts
 
     # Build competitor ChainResults — totals restricted to source_barcodes
@@ -192,28 +216,37 @@ def compare_cart(
     for chain_code, chain in competitor_data.items():
         cart_total = chain_items_total(chain["items"])
         matched_in_common = sum(1 for b in source_barcodes if b in chain["items"])
-        chain_results.append(ChainResult(
-            chain_code=chain_code,
-            chain_name=chain["chain_name"],
-            items_total=cart_total,
-            matched_count=matched_in_common,
-            shipping=make_shipping(chain_code, cart_total),
-        ))
+        chain_results.append(
+            ChainResult(
+                chain_code=chain_code,
+                chain_name=chain["chain_name"],
+                items_total=cart_total,
+                matched_count=matched_in_common,
+                shipping=make_shipping(chain_code, cart_total),
+            )
+        )
 
     # Build source ChainResult — total restricted to the common comparable set
-    src_total = round(
-        sum(src["items"][b]["price"] * qty(b) for b in source_barcodes), 2
-    ) if src else 0.0
-    source_chain_result = ChainResult(
-        chain_code=request.source_chain_code,
-        chain_name=src["chain_name"],
-        items_total=src_total,
-        matched_count=len(source_barcodes),
-        shipping=make_shipping(request.source_chain_code, src_total),
-    ) if src else None
+    src_total = (
+        round(sum(src["items"][b]["price"] * qty(b) for b in source_barcodes), 2)
+        if src
+        else 0.0
+    )
+    source_chain_result = (
+        ChainResult(
+            chain_code=request.source_chain_code,
+            chain_name=src["chain_name"],
+            items_total=src_total,
+            matched_count=len(source_barcodes),
+            shipping=make_shipping(request.source_chain_code, src_total),
+        )
+        if src
+        else None
+    )
 
     # Cheapest competitor = lowest items-only total (shipping shown separately)
     cheapest = min(chain_results, key=lambda c: c.items_total)
+    logger.info("Cheapest competitor: %s (₪%.2f)", cheapest.chain_name, cheapest.items_total)
 
     # Per-item breakdown against the cheapest competitor chain
     cheapest_items = competitor_data[cheapest.chain_code]["items"]
@@ -223,23 +256,27 @@ def compare_cart(
         if barcode in cheapest_items:
             entry = cheapest_items[barcode]
             unit = entry["price"]
-            items.append(ItemResult(
-                barcode=barcode,
-                product_name=entry["product_name"] or product_names.get(barcode),
-                quantity=q,
-                unit_price=unit,
-                competitor_price=round(unit * q, 2),
-                matched=True,
-            ))
+            items.append(
+                ItemResult(
+                    barcode=barcode,
+                    product_name=entry["product_name"] or product_names.get(barcode),
+                    quantity=q,
+                    unit_price=unit,
+                    competitor_price=round(unit * q, 2),
+                    matched=True,
+                )
+            )
         else:
-            items.append(ItemResult(
-                barcode=barcode,
-                product_name=product_names.get(barcode),
-                quantity=q,
-                unit_price=None,
-                competitor_price=None,
-                matched=False,
-            ))
+            items.append(
+                ItemResult(
+                    barcode=barcode,
+                    product_name=product_names.get(barcode),
+                    quantity=q,
+                    unit_price=None,
+                    competitor_price=None,
+                    matched=False,
+                )
+            )
 
     return CompareResponse(
         cheapest_chain=CheapestChain(

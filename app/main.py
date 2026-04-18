@@ -17,6 +17,7 @@ def main():
     ]
 
     repo = SupabaseRepository()
+    summary = []
     for scraper in scrapers:
         logger.info("Processing scraper for %s", scraper.chain_name)
 
@@ -78,8 +79,13 @@ def main():
                 # 5. Upsert products first (prices FK depends on products)
                 repo.upsert_products(products)
                 repo.upsert_prices(prices)
+                summary.append((scraper.chain_name, len(products)))
         else:
             logger.warning("No latest file URL found for %s.", scraper.chain_name)
+
+    print("\n=== Scraping Summary ===")
+    for name, count in summary:
+        print(f"  {name:<12}  {count} items upserted")
 
 
 if __name__ == "__main__":

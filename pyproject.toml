@@ -9,6 +9,7 @@ dependencies = [
     "black>=26.1.0",
     "bs4>=0.0.2",
     "dotenv>=0.9.9",
+    "fastapi>=0.115.0",
     "lxml>=6.0.2",
     "psycopg>=3.3.3",
     "psycopg-binary>=3.3.3",
@@ -16,6 +17,7 @@ dependencies = [
     "req>=1.0.0",
     "requests>=2.32.5",
     "ruff>=0.15.0",
+    "uvicorn>=0.34.0",
 ]
 [tool.ruff]
 line-length = 88
