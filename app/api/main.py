@@ -90,6 +90,57 @@ def _calc_shipping_fee(option: dict, cart_total: float) -> tuple[float, bool]:
     return base_fee, False
 
 
+def _best_available_order_total(items_total: float, options: list[ShippingOption]) -> float | None:
+    if not options:
+        return items_total
+
+    available_totals = [
+        round(items_total + option.fee, 2)
+        for option in options
+        if not option.unavailable
+    ]
+    if not available_totals:
+        return None
+    return min(available_totals)
+
+
+def _select_comparison_option_type(
+    source_options: list[ShippingOption],
+    competitor_results: list[dict],
+) -> str | None:
+    source_option_types = {option.option_type for option in source_options}
+    if not source_option_types:
+        return None
+
+    supported_by_any_competitor = set()
+    for chain in competitor_results:
+        supported_by_any_competitor |= {option.option_type for option in chain["shipping"]}
+
+    common_option_types = source_option_types & supported_by_any_competitor
+    if not common_option_types:
+        return None
+
+    if "delivery" in common_option_types:
+        return "delivery"
+    if "pickup" in common_option_types:
+        return "pickup"
+    return None
+
+
+def _order_total_for_option(
+    items_total: float,
+    options: list[ShippingOption],
+    option_type: str | None,
+) -> float | None:
+    if option_type is None:
+        return None
+
+    for option in options:
+        if option.option_type == option_type:
+            return None if option.unavailable else round(items_total + option.fee, 2)
+    return None
+
+
 @app.post("/api/compare", response_model=CompareResponse)
 def compare_cart(
     request: CompareRequest,
@@ -152,6 +203,7 @@ def compare_cart(
                         option_type=opt["option_type"],
                         fee=fee,
                         notes=opt["notes"],
+                        min_order=opt.get("min_order"),
                         unavailable=unavailable,
                     )
                 )
@@ -159,6 +211,7 @@ def compare_cart(
                 chain_code=request.source_chain_code,
                 chain_name=src["chain_name"],
                 items_total=src_total,
+                order_total=_best_available_order_total(src_total, src_shipping),
                 matched_count=0,
                 shipping=src_shipping,
             )
@@ -206,24 +259,26 @@ def compare_cart(
                     option_type=opt["option_type"],
                     fee=fee,
                     notes=opt["notes"],
+                    min_order=opt.get("min_order"),
                     unavailable=unavailable,
                 )
             )
         return opts
 
-    # Build competitor ChainResults — totals restricted to source_barcodes
-    chain_results: list[ChainResult] = []
+    # Build competitor totals first so we can choose one common fulfillment mode
+    competitor_totals: list[dict] = []
     for chain_code, chain in competitor_data.items():
         cart_total = chain_items_total(chain["items"])
         matched_in_common = sum(1 for b in source_barcodes if b in chain["items"])
-        chain_results.append(
-            ChainResult(
-                chain_code=chain_code,
-                chain_name=chain["chain_name"],
-                items_total=cart_total,
-                matched_count=matched_in_common,
-                shipping=make_shipping(chain_code, cart_total),
-            )
+        shipping = make_shipping(chain_code, cart_total)
+        competitor_totals.append(
+            {
+                "chain_code": chain_code,
+                "chain_name": chain["chain_name"],
+                "items_total": cart_total,
+                "matched_count": matched_in_common,
+                "shipping": shipping,
+            }
         )
 
     # Build source ChainResult — total restricted to the common comparable set
@@ -232,60 +287,105 @@ def compare_cart(
         if src
         else 0.0
     )
+    source_shipping = make_shipping(request.source_chain_code, src_total) if src else []
+    comparison_option_type = _select_comparison_option_type(source_shipping, competitor_totals)
+
+    # Build competitor ChainResults using the selected common fulfillment mode
+    chain_results: list[ChainResult] = []
+    for chain in competitor_totals:
+        chain_results.append(
+            ChainResult(
+                chain_code=chain["chain_code"],
+                chain_name=chain["chain_name"],
+                items_total=chain["items_total"],
+                order_total=_order_total_for_option(
+                    chain["items_total"],
+                    chain["shipping"],
+                    comparison_option_type,
+                ),
+                matched_count=chain["matched_count"],
+                shipping=chain["shipping"],
+            )
+        )
     source_chain_result = (
         ChainResult(
             chain_code=request.source_chain_code,
             chain_name=src["chain_name"],
             items_total=src_total,
+            order_total=_order_total_for_option(
+                src_total,
+                source_shipping,
+                comparison_option_type,
+            ),
             matched_count=len(source_barcodes),
-            shipping=make_shipping(request.source_chain_code, src_total),
+            shipping=source_shipping,
         )
         if src
         else None
     )
 
-    # Cheapest competitor = lowest items-only total (shipping shown separately)
-    cheapest = min(chain_results, key=lambda c: c.items_total)
-    logger.info("Cheapest competitor: %s (₪%.2f)", cheapest.chain_name, cheapest.items_total)
+    # Cheapest competitor = lowest currently available order total.
+    eligible_chain_results = [
+        chain for chain in chain_results if chain.order_total is not None
+    ]
+    cheapest = (
+        min(eligible_chain_results, key=lambda c: c.order_total)
+        if eligible_chain_results
+        else None
+    )
 
-    # Per-item breakdown against the cheapest competitor chain
-    cheapest_items = competitor_data[cheapest.chain_code]["items"]
     items: list[ItemResult] = []
-    for barcode in request.barcodes:
-        q = qty(barcode)
-        if barcode in cheapest_items:
-            entry = cheapest_items[barcode]
-            unit = entry["price"]
-            items.append(
-                ItemResult(
-                    barcode=barcode,
-                    product_name=entry["product_name"] or product_names.get(barcode),
-                    quantity=q,
-                    unit_price=unit,
-                    competitor_price=round(unit * q, 2),
-                    matched=True,
+    if cheapest:
+        logger.info(
+            "Cheapest available competitor: %s (₪%.2f)",
+            cheapest.chain_name,
+            cheapest.order_total,
+        )
+
+        cheapest_items = competitor_data[cheapest.chain_code]["items"]
+        for barcode in request.barcodes:
+            q = qty(barcode)
+            if barcode in cheapest_items:
+                entry = cheapest_items[barcode]
+                unit = entry["price"]
+                items.append(
+                    ItemResult(
+                        barcode=barcode,
+                        product_name=entry["product_name"] or product_names.get(barcode),
+                        quantity=q,
+                        unit_price=unit,
+                        competitor_price=round(unit * q, 2),
+                        matched=True,
+                    )
                 )
-            )
-        else:
-            items.append(
-                ItemResult(
-                    barcode=barcode,
-                    product_name=product_names.get(barcode),
-                    quantity=q,
-                    unit_price=None,
-                    competitor_price=None,
-                    matched=False,
+            else:
+                items.append(
+                    ItemResult(
+                        barcode=barcode,
+                        product_name=product_names.get(barcode),
+                        quantity=q,
+                        unit_price=None,
+                        competitor_price=None,
+                        matched=False,
+                    )
                 )
-            )
+    else:
+        logger.info("No competitor has an available fulfillment option for this cart.")
 
     return CompareResponse(
-        cheapest_chain=CheapestChain(
-            chain_code=cheapest.chain_code,
-            chain_name=cheapest.chain_name,
-            total_price=cheapest.items_total,
+        comparison_option_type=comparison_option_type,
+        cheapest_chain=(
+            CheapestChain(
+                chain_code=cheapest.chain_code,
+                chain_name=cheapest.chain_name,
+                total_price=cheapest.order_total,
+                items_total=cheapest.items_total,
+            )
+            if cheapest
+            else None
         ),
         source_chain=source_chain_result,
-        matched_count=cheapest.matched_count,
+        matched_count=cheapest.matched_count if cheapest else 0,
         total_count=len(request.barcodes),
         chains=chain_results,
         items=items,

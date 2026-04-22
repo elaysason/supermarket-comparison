@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,7 @@ class CompareRequest(BaseModel):
 class CheapestChain(BaseModel):
     chain_code: str
     chain_name: str
+    items_total: float = Field(..., description="Comparable items subtotal before shipping/pickup.")
     total_price: float
 
 
@@ -26,6 +27,10 @@ class ShippingOption(BaseModel):
     option_type: str = Field(..., description="'delivery' or 'pickup'")
     fee: float = Field(..., description="Shipping/pickup fee in NIS for this cart total.")
     notes: Optional[str] = None
+    min_order: Optional[float] = Field(
+        None,
+        description="Minimum order amount in NIS required for this option. None if no minimum.",
+    )
     unavailable: bool = Field(
         False,
         description="True when the cart total is below the chain's minimum order for this option.",
@@ -36,6 +41,10 @@ class ChainResult(BaseModel):
     chain_code: str
     chain_name: str
     items_total: float = Field(..., description="Sum of matched item prices × quantities.")
+    order_total: Optional[float] = Field(
+        None,
+        description="Comparable total for the selected fulfillment mode (items_total + fee). None when no shared mode was selected or that mode is unavailable for this chain.",
+    )
     matched_count: int
     shipping: List[ShippingOption] = Field(
         default_factory=list,
@@ -59,16 +68,20 @@ class ItemResult(BaseModel):
 
 
 class CompareResponse(BaseModel):
+    comparison_option_type: Optional[Literal["delivery", "pickup"]] = Field(
+        None,
+        description="The fulfillment mode used for the main comparison when one could be selected.",
+    )
     cheapest_chain: Optional[CheapestChain] = Field(
         None,
-        description="The competitor chain with the lowest items-only total. None if no matches.",
+        description="The competitor chain with the lowest currently available total for the selected fulfillment mode. None if no eligible chain exists.",
     )
     source_chain: Optional[ChainResult] = Field(
         None,
         description="The user's current chain with items_total for matched barcodes only. None if source has no price data.",
     )
     matched_count: int = Field(
-        ..., description="Number of cart barcodes found in competitor price data."
+        ..., description="Number of cart barcodes found in the selected cheapest available competitor."
     )
     total_count: int = Field(
         ..., description="Total number of barcodes sent in the request."

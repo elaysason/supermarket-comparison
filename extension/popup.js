@@ -20,15 +20,34 @@ const CHAIN_NAMES = {
 };
 
 async function init() {
+  const card = document.getElementById("status-card");
   const dot = document.getElementById("status-dot");
   const text = document.getElementById("status-text");
+  const tone = document.getElementById("status-tone");
   const label = document.getElementById("site-label");
+  const description = document.getElementById("status-description");
+
+  function setStatus({ state, dotClass, statusText, statusTone, siteLabel, statusDescription }) {
+    card.dataset.state = state;
+    dot.className = dotClass;
+    text.textContent = statusText;
+    tone.textContent = statusTone;
+    label.textContent = siteLabel || "";
+    description.textContent = statusDescription;
+  }
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab || !tab.url) {
-      text.textContent = "לא ניתן לקרוא את הכרטיסייה";
+      setStatus({
+        state: "error",
+        dotClass: "dot-error",
+        statusText: "לא ניתן לקרוא את הכרטיסייה",
+        statusTone: "שגיאה",
+        siteLabel: "",
+        statusDescription: "הדפדפן לא סיפק כתובת ללשונית הפעילה כרגע.",
+      });
       return;
     }
 
@@ -38,9 +57,14 @@ async function init() {
     const matchedDomain = SUPPORTED_DOMAINS.find((d) => hostname.includes(d));
 
     if (!matchedDomain) {
-      dot.className = "dot-inactive";
-      text.textContent = "לא פעיל באתר זה";
-      label.textContent = hostname;
+      setStatus({
+        state: "inactive",
+        dotClass: "dot-inactive",
+        statusText: "לא פעיל באתר זה",
+        statusTone: "לא נתמך",
+        siteLabel: hostname,
+        statusDescription: "Cart Sniper פועל רק בעגלות הקניות של שופרסל, רמי לוי ויוחננוף.",
+      });
       return;
     }
 
@@ -48,16 +72,33 @@ async function init() {
     const onCartPage = CART_PATTERN.test(url.pathname + url.hash + url.search);
 
     if (onCartPage) {
-      dot.className = "dot-active";
-      text.textContent = "פעיל — עגלת קניות";
+      setStatus({
+        state: "active",
+        dotClass: "dot-active",
+        statusText: "פעיל בדף עגלה",
+        statusTone: "מוכן",
+        siteLabel: `${chainName} · ${hostname}`,
+        statusDescription: "העמוד נתמך וההשוואה תופיע מתוך העגלה עצמה ברגע שהמוצרים יזוהו.",
+      });
     } else {
-      dot.className = "dot-inactive";
-      text.textContent = "ממתין לדף עגלה";
+      setStatus({
+        state: "supported",
+        dotClass: "dot-supported",
+        statusText: "ממתין לדף עגלה",
+        statusTone: "נתמך",
+        siteLabel: `${chainName} · ${hostname}`,
+        statusDescription: "האתר מזוהה. עבור לעגלת הקניות כדי להפעיל את ההשוואה האוטומטית.",
+      });
     }
-
-    label.textContent = `${chainName} · ${hostname}`;
   } catch (err) {
-    text.textContent = "שגיאה";
+    setStatus({
+      state: "error",
+      dotClass: "dot-error",
+      statusText: "שגיאה בטעינת המצב",
+      statusTone: "שגיאה",
+      siteLabel: "",
+      statusDescription: "אירעה בעיה בקריאת נתוני הלשונית הפעילה.",
+    });
     console.error("[CartSniper popup]", err);
   }
 }
