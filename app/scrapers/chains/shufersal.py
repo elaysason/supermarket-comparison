@@ -34,7 +34,7 @@ class ShufersalScraper(CommonXMLScraper):
         """Maps a FileType to the corresponding Shufersal API category."""
         mapping = {
             FileType.PRICE_FULL: ShufersalCategory.PRICES_FULL,
-            FileType.PRICE_DELETA: ShufersalCategory.PRICES,
+            FileType.PRICE_DELTA: ShufersalCategory.PRICES,
             FileType.STORES: ShufersalCategory.STORES,
         }
         return mapping.get(file_type)

@@ -5,9 +5,9 @@ from typing import Any, Dict, Generator, Optional
 
 class FileType(Enum):
     PRICE_FULL = "PriceFull"
-    PRICE_DELETA = "Price"
+    PRICE_DELTA = "Price"
     PROMO = "PromoFull"
-    PROMO_DELETA = "Promo"
+    PROMO_DELTA = "Promo"
     STORES = "Stores"
 
 

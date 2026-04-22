@@ -312,7 +312,15 @@ function showLoadingWidget() {
   w.className = "cart-sniper-widget cart-sniper-loading";
   w.innerHTML = `
     <div class="cs-header"><span class="cs-logo">Cart Sniper</span></div>
-    <div class="cs-body"><span class="cs-spinner"></span> בודק מחירים...</div>
+    <div class="cs-body">
+      <div class="cs-loading-shell">
+        <span class="cs-spinner"></span>
+        <div>
+          <div class="cs-state-title">בודק מחירים...</div>
+          <div class="cs-state-copy">משווה את העגלה מול הרשתות הנתמכות.</div>
+        </div>
+      </div>
+    </div>
   `;
   document.body.appendChild(w);
 }
@@ -323,6 +331,24 @@ function escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function formatCurrencyHtml(value) {
+  return `&#x20AA;${Number(value).toFixed(2)}`;
+}
+
+function formatCurrencyText(value) {
+  return `₪${Number(value).toFixed(2)}`;
+}
+
+const HEBREW_CHAIN_NAMES = {
+  Shufersal: "שופרסל",
+  "Rami Levi": "רמי לוי",
+  Yohananof: "יוחננוף",
+};
+
+function toDisplayChainName(name) {
+  return HEBREW_CHAIN_NAMES[name] || name;
 }
 
 /**
@@ -337,61 +363,271 @@ function resolveItemName(item) {
   return null;
 }
 
+function getOrderGapText(chain, optionType = null) {
+  if (!chain?.shipping?.length) return null;
+
+  const relevantOptions = optionType
+    ? chain.shipping.filter((option) => option.option_type === optionType)
+    : chain.shipping;
+
+  let smallestGap = null;
+  for (const option of relevantOptions) {
+    if (!option.unavailable || option.min_order == null) continue;
+    const gap = Number((option.min_order - chain.items_total).toFixed(2));
+    if (gap <= 0) continue;
+    if (smallestGap == null || gap < smallestGap) smallestGap = gap;
+  }
+
+  return smallestGap == null ? null : `חסרים ${formatCurrencyText(smallestGap)} למינימום`;
+}
+
+function getDisplayTotal(chain) {
+  return chain.order_total ?? chain.items_total;
+}
+
+function getComparisonModeLabel(optionType) {
+  if (optionType === "delivery") return "משלוח";
+  if (optionType === "pickup") return "איסוף";
+  return "הזמנה";
+}
+
+function getUnavailableBadgeText(optionType) {
+  if (!optionType) return "לא זמין להזמנה";
+  return `לא זמין ב${getComparisonModeLabel(optionType)}`;
+}
+
+function getUnavailableNoteText(optionType) {
+  if (!optionType) return "לא זמין כרגע להזמנה";
+  return `לא זמין כרגע ב${getComparisonModeLabel(optionType)}`;
+}
+
+function getSummaryMarkup(lowestItemsChain, cheapestChain, sourceChain, comparisonOptionType) {
+  const sourceTotal = sourceChain?.order_total ?? null;
+  const competitorName = escapeHtml(toDisplayChainName(cheapestChain.chain_name));
+  const competitorTotal = formatCurrencyHtml(cheapestChain.total_price);
+  const comparisonModeLabel = getComparisonModeLabel(comparisonOptionType);
+  const rawLowestHtml = lowestItemsChain && lowestItemsChain.chain_code !== cheapestChain.chain_code
+    ? `<div class="cs-summary-raw">סל המוצרים הזול ביותר: <strong>${escapeHtml(toDisplayChainName(lowestItemsChain.chain_name))}</strong> ${formatCurrencyHtml(lowestItemsChain.items_total)}</div>`
+    : "";
+
+  if (!sourceChain || sourceTotal == null) {
+    return `
+      <div class="cs-summary">
+        <div class="cs-summary-kicker">הכי זול ב${comparisonModeLabel}</div>
+        <div class="cs-summary-main">
+          <span class="cs-summary-title">${competitorName}</span>
+          <span class="cs-summary-total">${competitorTotal}</span>
+        </div>
+        ${rawLowestHtml}
+      </div>`;
+  }
+
+  const delta = Number((sourceTotal - cheapestChain.total_price).toFixed(2));
+
+  if (Math.abs(delta) < 0.005) {
+    return `
+      <div class="cs-summary cs-summary-neutral">
+        <div class="cs-summary-kicker">השוואת ${comparisonModeLabel}</div>
+        <div class="cs-summary-main">
+          <span class="cs-summary-title">אין פער כרגע</span>
+          <span class="cs-summary-total">${competitorTotal}</span>
+        </div>
+        <div class="cs-summary-copy">העגלה שלך ו-${competitorName} באותו מחיר ב${comparisonModeLabel}.</div>
+        ${rawLowestHtml}
+      </div>`;
+  }
+
+  if (delta < 0) {
+    return `
+      <div class="cs-summary cs-summary-win">
+        <div class="cs-summary-kicker">העגלה שלך עדיפה</div>
+        <div class="cs-summary-main">
+          <span class="cs-summary-title">${escapeHtml(toDisplayChainName(sourceChain.chain_name))}</span>
+          <span class="cs-summary-total">${formatCurrencyHtml(sourceTotal)}</span>
+        </div>
+        <div class="cs-summary-copy">${competitorName} יקר יותר ב${comparisonModeLabel} ב-${formatCurrencyHtml(Math.abs(delta))}.</div>
+        ${rawLowestHtml}
+      </div>`;
+  }
+
+  return `
+    <div class="cs-summary">
+      <div class="cs-summary-kicker">הכי זול ב${comparisonModeLabel}</div>
+      <div class="cs-summary-main">
+        <span class="cs-summary-title">${competitorName}</span>
+        <span class="cs-summary-total">${competitorTotal}</span>
+      </div>
+      <div class="cs-summary-copy">חוסך ${formatCurrencyHtml(delta)} מול ${escapeHtml(toDisplayChainName(sourceChain.chain_name))} ב${comparisonModeLabel}.</div>
+      ${rawLowestHtml}
+    </div>`;
+}
+
+function getUnavailableSummaryMarkup(lowestItemsChain, comparisonOptionType) {
+  const comparisonModeLabel = getComparisonModeLabel(comparisonOptionType);
+  if (!lowestItemsChain) {
+    return `
+      <div class="cs-summary cs-summary-muted">
+        <div class="cs-summary-kicker">זמינות ${comparisonModeLabel}</div>
+        <div class="cs-summary-main">
+          <span class="cs-summary-title">אין כרגע רשת זמינה</span>
+        </div>
+        <div class="cs-summary-copy">מצאנו מחירים, אבל אין כרגע רשת שניתן להשוות בה ${comparisonModeLabel}.</div>
+      </div>`;
+  }
+
+  const gapText = getOrderGapText(lowestItemsChain, comparisonOptionType);
+  return `
+    <div class="cs-summary cs-summary-muted">
+      <div class="cs-summary-kicker">סל המוצרים הזול ביותר כרגע</div>
+      <div class="cs-summary-main">
+        <span class="cs-summary-title">${escapeHtml(toDisplayChainName(lowestItemsChain.chain_name))}</span>
+        <span class="cs-summary-total cs-summary-total-muted">${formatCurrencyHtml(lowestItemsChain.items_total)}</span>
+      </div>
+      <div class="cs-summary-copy">אי אפשר להזמין כרגע ב${comparisonModeLabel}.${gapText ? ` ${escapeHtml(gapText)}.` : ""}</div>
+    </div>`;
+}
+
 function showResultWidget(data) {
   removeWidget();
   const w = document.createElement("div");
   w.id = WIDGET_ID;
   w.className = "cart-sniper-widget";
+  const {
+    comparison_option_type,
+    cheapest_chain,
+    source_chain,
+    matched_count,
+    total_count,
+    items = [],
+    chains = [],
+  } = data;
 
-  if (!data.cheapest_chain) {
+  if (!cheapest_chain && chains.length === 0) {
     w.innerHTML = `
       <div class="cs-header">
         <span class="cs-logo">Cart Sniper</span>
         <button class="cs-close" aria-label="סגור">&times;</button>
       </div>
-      <div class="cs-body cs-nomatch">לא נמצאו מוצרים תואמים בשרשראות אחרות.</div>
+      <div class="cs-body cs-nomatch">
+        <div class="cs-state-title">לא נמצאה השוואה זמינה</div>
+        <div class="cs-state-copy">זיהינו את העגלה, אבל לא נמצאו כרגע מוצרים תואמים ברשתות האחרות.</div>
+      </div>
     `;
   } else {
-    const { cheapest_chain, source_chain, matched_count, total_count, items = [], chains = [] } = data;
+    const lowestItemsChain = chains.length > 0
+      ? [...chains].sort((a, b) => a.items_total - b.items_total)[0]
+      : null;
+    const lowestOrderableChain = chains.length > 0
+      ? [...chains]
+        .filter((chain) => chain.order_total != null)
+        .sort((a, b) => a.order_total - b.order_total)[0] || null
+      : null;
+    const summaryHtml = cheapest_chain
+      ? getSummaryMarkup(lowestItemsChain, cheapest_chain, source_chain, comparison_option_type)
+      : getUnavailableSummaryMarkup(lowestItemsChain, comparison_option_type);
 
     // ── Helper: render a single chain row ──────────────────────────────────
     const OPTION_LABEL = { delivery: "משלוח", pickup: "איסוף" };
 
-    function renderChainRow(chain, extraClass) {
-      const shippingHtml = chain.shipping.map((s) => {
+    function renderChainRow(chain, options = {}) {
+      const { isCheapest = false, isSource = false } = options;
+      const isUnavailable = chain.order_total == null;
+      const orderGapText = getOrderGapText(chain, comparison_option_type);
+      const primaryOption = comparison_option_type
+        ? chain.shipping.find((option) => option.option_type === comparison_option_type)
+        : null;
+      const alternateOptions = comparison_option_type
+        ? chain.shipping.filter((option) => option.option_type !== comparison_option_type)
+        : chain.shipping;
+      const rowClass = [
+        "cs-chain-row",
+        isCheapest ? "cs-chain-cheapest" : "",
+        isSource ? "cs-chain-source" : "",
+        isUnavailable ? "cs-chain-unavailable" : "",
+      ].filter(Boolean).join(" ");
+      const badges = [
+        isSource ? '<span class="cs-chain-badge cs-chain-badge-source">העגלה שלך</span>' : "",
+        isCheapest && !isSource ? '<span class="cs-chain-badge cs-chain-badge-cheapest">הכי זול להזמנה</span>' : "",
+        !isCheapest && !isSource && lowestItemsChain?.chain_code === chain.chain_code
+          ? '<span class="cs-chain-badge cs-chain-badge-lowest">סל המוצרים הזול ביותר</span>'
+          : "",
+        !isSource && isUnavailable ? `<span class="cs-chain-badge cs-chain-badge-unavailable">${getUnavailableBadgeText(comparison_option_type)}</span>` : "",
+      ].filter(Boolean).join("");
+      const badgesHtml = badges ? `<div class="cs-chain-badges">${badges}</div>` : "";
+      function renderOption(s, isPrimary = false) {
         const label = OPTION_LABEL[s.option_type] || s.option_type;
         if (s.unavailable) {
-          const feeStr = s.fee === 0 ? "חינם" : `&#x20AA;${s.fee.toFixed(0)}`;
-          return `<span class="cs-ship-opt cs-ship-unavail">${label}: <span class="cs-ship-fee">${feeStr} (מינימום לא הושג)</span></span>`;
+          const feeStr = s.fee === 0 ? "חינם" : formatCurrencyHtml(s.fee);
+          const gap = s.min_order != null ? Number((s.min_order - chain.items_total).toFixed(2)) : null;
+          const gapHtml = gap && gap > 0 ? ` <span class="cs-ship-gap">חסרים ${formatCurrencyHtml(gap)}</span>` : "";
+          return `<span class="cs-ship-opt${isPrimary ? " cs-ship-opt-primary" : ""} cs-ship-unavail">${label}: <span class="cs-ship-fee">${feeStr} (מינימום לא הושג)</span>${gapHtml}</span>`;
         }
-        const feeStr = s.fee === 0 ? "חינם" : `+&#x20AA;${s.fee.toFixed(0)}`;
-        const withFee = s.fee === 0
-          ? chain.items_total.toFixed(2)
-          : (chain.items_total + s.fee).toFixed(2);
-        return `<span class="cs-ship-opt">${label}: <strong>&#x20AA;${withFee}</strong> <span class="cs-ship-fee">(${feeStr})</span></span>`;
-      }).join("");
+        const feeStr = s.fee === 0 ? "חינם" : `+${formatCurrencyHtml(s.fee)}`;
+        const withFee = s.fee === 0 ? chain.items_total : chain.items_total + s.fee;
+        return `<span class="cs-ship-opt${isPrimary ? " cs-ship-opt-primary" : ""}">${label}: <strong>${formatCurrencyHtml(withFee)}</strong> <span class="cs-ship-fee">(${feeStr})</span></span>`;
+      }
+
+      const unavailableNoteHtml = isUnavailable
+        ? `<div class="cs-chain-unavailable-note">${getUnavailableNoteText(comparison_option_type)}.${orderGapText ? ` ${escapeHtml(orderGapText)}.` : ""}</div>`
+        : "";
+      const primaryModeHtml = !isUnavailable && primaryOption
+        ? `<div class="cs-chain-primary-mode">${renderOption(primaryOption, true)}</div>`
+        : "";
+      const alternateHtml = !isUnavailable && alternateOptions.length > 0
+        ? `<div class="cs-chain-alt-modes">${alternateOptions.map((option) => renderOption(option)).join("")}</div>`
+        : "";
 
       return `
-        <div class="cs-chain-row${extraClass ? ` ${extraClass}` : ""}">
+        <div class="${rowClass}">
           <div class="cs-chain-top">
-            <span class="cs-chain-name">${escapeHtml(chain.chain_name)}</span>
-            <span class="cs-chain-total">&#x20AA;${chain.items_total.toFixed(2)}</span>
+            <div class="cs-chain-heading">
+              <span class="cs-chain-name">${escapeHtml(toDisplayChainName(chain.chain_name))}</span>
+              ${badgesHtml}
+            </div>
+            <div class="cs-chain-total-wrap">
+              <span class="cs-chain-total-label">${isUnavailable ? (isSource ? "סל מוצרים בעגלה שלך" : "סל מוצרים") : isSource ? `סה"כ ${getComparisonModeLabel(comparison_option_type)} לעגלה שלך` : `סה"כ ${getComparisonModeLabel(comparison_option_type)}`}</span>
+              <span class="cs-chain-total">${formatCurrencyHtml(getDisplayTotal(chain))}</span>
+            </div>
           </div>
-          ${shippingHtml ? `<div class="cs-chain-shipping">${shippingHtml}</div>` : ""}
+          ${unavailableNoteHtml}
+          ${primaryModeHtml}
+          ${alternateHtml}
         </div>`;
     }
 
     // ── Source chain row (current store, shown above competitors) ──────────
     const sourceRowHtml = source_chain
-      ? renderChainRow(source_chain, "cs-chain-source")
+      ? renderChainRow(source_chain, { isSource: true })
       : "";
 
     // ── Per-chain comparison table ──────────────────────────────────────────
-    // Sort chains by items_total ascending so cheapest is first
-    const sortedChains = [...chains].sort((a, b) => a.items_total - b.items_total);
-    const chainRowsHtml = sortedChains.map((chain, i) =>
-      renderChainRow(chain, i === 0 ? "cs-chain-cheapest" : "")
+    // Keep the selected cheapest available chain first, then other orderable
+    // chains, then chains whose minimum order has not been reached.
+    const sortedChains = [...chains].sort((a, b) => {
+      const aIsLowestItems = lowestItemsChain?.chain_code === a.chain_code;
+      const bIsLowestItems = lowestItemsChain?.chain_code === b.chain_code;
+      const aIsCheapest = cheapest_chain?.chain_code === a.chain_code;
+      const bIsCheapest = cheapest_chain?.chain_code === b.chain_code;
+      if (aIsCheapest !== bIsCheapest) return aIsCheapest ? -1 : 1;
+
+      const aAvailable = a.order_total != null;
+      const bAvailable = b.order_total != null;
+      if (aAvailable !== bAvailable) return aAvailable ? -1 : 1;
+
+      const aIsLowestOrderable = lowestOrderableChain?.chain_code === a.chain_code;
+      const bIsLowestOrderable = lowestOrderableChain?.chain_code === b.chain_code;
+      if (aIsLowestOrderable !== bIsLowestOrderable) return aIsLowestOrderable ? -1 : 1;
+      if (aIsLowestItems !== bIsLowestItems) return aIsLowestItems ? -1 : 1;
+
+      return getDisplayTotal(a) - getDisplayTotal(b);
+    });
+    const chainRowsHtml = sortedChains.map((chain) =>
+      renderChainRow(chain, { isCheapest: cheapest_chain?.chain_code === chain.chain_code })
     ).join("");
+    const detailsChainName = cheapest_chain?.chain_name || lowestItemsChain?.chain_name;
+    const detailsLabel = detailsChainName
+      ? `פריטים מול ${escapeHtml(toDisplayChainName(detailsChainName))} (${matched_count}/${total_count} נמצאו)`
+      : `פירוט פריטים (${matched_count}/${total_count} נמצאו)`;
 
     // ── Per-item breakdown ──────────────────────────────────────────────────
     const itemRowsHtml = items.map((item) => {
@@ -427,12 +663,13 @@ function showResultWidget(data) {
         <button class="cs-close" aria-label="סגור">&times;</button>
       </div>
       <div class="cs-body">
-        <div class="cs-label">${matched_count}/${total_count} פריטים זוהו</div>
-        ${sourceRowHtml ? `<div class="cs-chains">${sourceRowHtml}</div><div class="cs-chains-divider"></div>` : ""}
+        ${summaryHtml}
+        ${sourceRowHtml ? `<div class="cs-section-label">העגלה שלך</div><div class="cs-chains">${sourceRowHtml}</div>` : ""}
+        <div class="cs-section-label">רשתות להשוואה</div>
         <div class="cs-chains">${chainRowsHtml}</div>
         ${items.length > 0 ? `
         <details class="cs-details">
-          <summary class="cs-details-toggle">פירוט פריטים</summary>
+          <summary class="cs-details-toggle">${detailsLabel}</summary>
           <ul class="cs-item-list">${itemRowsHtml}</ul>
         </details>` : ""}
       </div>
@@ -456,7 +693,10 @@ function showErrorWidget(message) {
       <span class="cs-logo">Cart Sniper</span>
       <button class="cs-close" aria-label="סגור">&times;</button>
     </div>
-    <div class="cs-body cs-error">${message}</div>
+    <div class="cs-body cs-error">
+      <div class="cs-state-title">טעינת ההשוואה נכשלה</div>
+      <div class="cs-state-copy">${escapeHtml(message)}</div>
+    </div>
   `;
   document.body.appendChild(w);
   w.querySelector(".cs-close")?.addEventListener("click", () => {

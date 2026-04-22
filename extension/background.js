@@ -11,7 +11,6 @@ const API_BASES = [
   "http://127.0.0.1:8001",
   "http://127.0.0.1:8000",
 ];
-const API_KEY = "fepVCPso5nH44S"; // Must match API_KEY in .env
 const REQUEST_TIMEOUT_MS = 12000;
 
 function withTimeoutFetch(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -31,7 +30,6 @@ async function compareCart(payload) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": API_KEY,
         },
         body: JSON.stringify(payload),
       });

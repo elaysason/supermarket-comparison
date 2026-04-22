@@ -1,9 +1,9 @@
 import logging
 import os
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List
 
-import psycopg
 from dotenv import load_dotenv
+from psycopg_pool import ConnectionPool
 
 from app.models import PriceModel, ProductModel, StoreModel
 
@@ -12,29 +12,23 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-class SupabaseRepository:
-    def __init__(self):
-        self.user = os.getenv("user")
-        self.password = os.getenv("password")
-        self.host = os.getenv("host")
-        self.port = os.getenv("port")
-        self.dbname = os.getenv("dbname")
-
-        if not all([self.user, self.password, self.host, self.port, self.dbname]):
-            raise ValueError(
-                "Fatal: Missing one or more database environment variables in .env"
-            )
-
-    def _connect(self):
-        """Creates a new database connection."""
-        return psycopg.connect(
-            user=self.user,
-            password=self.password,
-            host=self.host,
-            port=self.port,
-            dbname=self.dbname,
+def _build_conninfo() -> str:
+    user = os.getenv("user")
+    password = os.getenv("password")
+    host = os.getenv("host")
+    port = os.getenv("port")
+    dbname = os.getenv("dbname")
+    if not all([user, password, host, port, dbname]):
+        raise ValueError(
+            "Fatal: Missing one or more database environment variables in .env"
         )
+    return f"user={user} password={password} host={host} port={port} dbname={dbname}"
 
+
+_pool = ConnectionPool(_build_conninfo(), min_size=1, max_size=5)
+
+
+class SupabaseRepository:
     def _chunk_data(
         self, data: List[Any], chunk_size: int = 1000
     ) -> Generator[List[Any], None, None]:
@@ -51,7 +45,7 @@ class SupabaseRepository:
             );
         """
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_code, store_code))
                     return cur.fetchone()[0]
@@ -68,7 +62,7 @@ class SupabaseRepository:
                 name = EXCLUDED.name;
         """
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(upsert_query, (chain_code, name))
                 conn.commit()
@@ -86,7 +80,7 @@ class SupabaseRepository:
                 store_name = EXCLUDED.store_name;
         """
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         upsert_query,
@@ -131,7 +125,7 @@ class SupabaseRepository:
         """
 
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(products):
                         data_tuples = [
@@ -177,7 +171,7 @@ class SupabaseRepository:
         """
 
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(prices):
                         data_tuples = [
@@ -236,17 +230,30 @@ class SupabaseRepository:
         """
         result: Dict[str, Any] = {}
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_codes,))
-                    for chain_code, option_type, fee, free_above, min_order, notes in cur.fetchall():
-                        result.setdefault(chain_code, []).append({
-                            "option_type": option_type,
-                            "fee": float(fee),
-                            "free_above": float(free_above) if free_above is not None else None,
-                            "min_order": float(min_order) if min_order is not None else None,
-                            "notes": notes,
-                        })
+                    for (
+                        chain_code,
+                        option_type,
+                        fee,
+                        free_above,
+                        min_order,
+                        notes,
+                    ) in cur.fetchall():
+                        result.setdefault(chain_code, []).append(
+                            {
+                                "option_type": option_type,
+                                "fee": float(fee),
+                                "free_above": float(free_above)
+                                if free_above is not None
+                                else None,
+                                "min_order": float(min_order)
+                                if min_order is not None
+                                else None,
+                                "notes": notes,
+                            }
+                        )
         except Exception as e:
             logger.error("Error fetching shipping costs: %s", e)
         return result
@@ -262,7 +269,7 @@ class SupabaseRepository:
         query = "SELECT barcode, product_name FROM products WHERE barcode = ANY(%s)"
         result: Dict[str, str] = {}
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (barcodes,))
                     for barcode, product_name in cur.fetchall():
@@ -304,11 +311,12 @@ class SupabaseRepository:
             LEFT JOIN products pr ON pr.barcode = p.barcode
             WHERE p.chain_code = %s
               AND p.barcode = ANY(%s)
+            ORDER BY p.barcode, p.price ASC
         """
 
         results: Dict[str, Any] = {}
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (source_chain_code, barcodes))
                     rows = cur.fetchall()
@@ -361,6 +369,7 @@ class SupabaseRepository:
             LEFT JOIN products pr ON pr.barcode = p.barcode
             WHERE p.chain_code != %s
               AND p.barcode = ANY(%s)
+            ORDER BY p.chain_code, p.barcode, p.price ASC
         """
 
         # results[chain_code] = {
@@ -371,7 +380,7 @@ class SupabaseRepository:
         results: Dict[str, Any] = {}
 
         try:
-            with self._connect() as conn:
+            with _pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (source_chain_code, barcodes))
                     rows = cur.fetchall()
@@ -396,9 +405,7 @@ class SupabaseRepository:
                 results[chain_code]["total_price"] = round(
                     results[chain_code]["total_price"], 2
                 )
-                results[chain_code]["matched_count"] = len(
-                    results[chain_code]["items"]
-                )
+                results[chain_code]["matched_count"] = len(results[chain_code]["items"])
 
         except Exception as e:
             logger.error("Error fetching competitor prices: %s", e)
