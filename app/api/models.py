@@ -81,7 +81,7 @@ class CompareResponse(BaseModel):
         description="The user's current chain with items_total for matched barcodes only. None if source has no price data.",
     )
     matched_count: int = Field(
-        ..., description="Number of cart barcodes found in the selected cheapest available competitor."
+        ..., description="Number of cart barcodes included in the shared cross-chain comparison set."
     )
     total_count: int = Field(
         ..., description="Total number of barcodes sent in the request."

@@ -173,19 +173,19 @@ def compare_cart(
         barcodes=request.barcodes,
     )
 
-    # Build the common barcode set: barcodes the SOURCE has AND at least one
-    # competitor has. Items only the source carries cannot be compared, so they
-    # are excluded from every chain total to keep the comparison apples-to-apples.
+    # Build the common barcode set. When the source chain has reliable price
+    # data, require the source and every displayed competitor to share the same
+    # barcodes. When the source feed is missing (for example Yohananof online
+    # store 150), fall back to the requested cart barcodes and compare only the
+    # overlap across competitors.
     src = source_data.get(request.source_chain_code)
-    src_barcodes_raw = set(src["items"].keys()) if src else set()
+    src_barcodes_raw = set(src["items"].keys()) if src else set(request.barcodes)
 
-    all_competitor_barcodes: set[str] = set()
+    common_barcodes = set(src_barcodes_raw)
     for chain in competitor_data.values():
-        all_competitor_barcodes |= set(chain["items"].keys())
+        common_barcodes &= set(chain["items"].keys())
 
-    source_barcodes = src_barcodes_raw & all_competitor_barcodes  # intersection
-
-    if not source_barcodes:
+    if not common_barcodes:
         src_total = (
             round(sum(item["price"] * qty(b) for b, item in src["items"].items()), 2)
             if src
@@ -241,7 +241,7 @@ def compare_cart(
             sum(
                 item["price"] * qty(b)
                 for b, item in chain_items.items()
-                if b in source_barcodes
+                if b in common_barcodes
             ),
             2,
         )
@@ -269,7 +269,7 @@ def compare_cart(
     competitor_totals: list[dict] = []
     for chain_code, chain in competitor_data.items():
         cart_total = chain_items_total(chain["items"])
-        matched_in_common = sum(1 for b in source_barcodes if b in chain["items"])
+        matched_in_common = sum(1 for b in common_barcodes if b in chain["items"])
         shipping = make_shipping(chain_code, cart_total)
         competitor_totals.append(
             {
@@ -283,11 +283,14 @@ def compare_cart(
 
     # Build source ChainResult — total restricted to the common comparable set
     src_total = (
-        round(sum(src["items"][b]["price"] * qty(b) for b in source_barcodes), 2)
+        round(sum(src["items"][b]["price"] * qty(b) for b in common_barcodes), 2)
         if src
         else 0.0
     )
-    source_shipping = make_shipping(request.source_chain_code, src_total) if src else []
+    # Keep the source chain's supported fulfillment modes available even when we
+    # do not have trustworthy source prices, so competitor-only comparison can
+    # still choose the right mode (for example Yohananof pickup).
+    source_shipping = make_shipping(request.source_chain_code, src_total if src else 0.0)
     comparison_option_type = _select_comparison_option_type(source_shipping, competitor_totals)
 
     # Build competitor ChainResults using the selected common fulfillment mode
@@ -317,7 +320,7 @@ def compare_cart(
                 source_shipping,
                 comparison_option_type,
             ),
-            matched_count=len(source_barcodes),
+            matched_count=len(common_barcodes),
             shipping=source_shipping,
         )
         if src
@@ -345,7 +348,7 @@ def compare_cart(
         cheapest_items = competitor_data[cheapest.chain_code]["items"]
         for barcode in request.barcodes:
             q = qty(barcode)
-            if barcode in cheapest_items:
+            if barcode in common_barcodes and barcode in cheapest_items:
                 entry = cheapest_items[barcode]
                 unit = entry["price"]
                 items.append(

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Cart Sniper (MVP)",
+  "name": "סל קל",
   "version": "1.0",
   "description": "Compares supermarket cart prices instantly against competitor chains.",
   "permissions": [
@@ -9,7 +9,7 @@
   "host_permissions": [
     "*://*.shufersal.co.il/*",
     "*://*.rami-levy.co.il/*",
-    "*://*.yohananof.co.il/*",
+    "*://*.yochananof.co.il/*",
     "http://127.0.0.1:8000/*",
     "http://127.0.0.1:8001/*"
   ],
@@ -18,7 +18,7 @@
       "matches": [
         "*://*.shufersal.co.il/*",
         "*://*.rami-levy.co.il/*",
-        "*://*.yohananof.co.il/*"
+        "*://*.yochananof.co.il/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],
@@ -30,7 +30,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Cart Sniper",
+    "default_title": "סל קל",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

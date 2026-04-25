@@ -11,14 +11,15 @@
   --cs-bg-raised:   #1e293b;
   --cs-bg-inset:    #0b1120;
   --cs-bg-card:     rgba(255, 255, 255, 0.03);
+  --cs-bg-panel:    #101827;
   --cs-border:      #334155;
   --cs-border-soft: #1e293b;
   --cs-text:        #f1f5f9;
   --cs-text-muted:  #94a3b8;
   --cs-text-dim:    #64748b;
-  --cs-accent:      #f59e0b;
-  --cs-accent-soft: rgba(245, 158, 11, 0.12);
-  --cs-accent-mid:  rgba(245, 158, 11, 0.25);
+  --cs-accent:      #eab308;
+  --cs-accent-soft: rgba(234, 179, 8, 0.10);
+  --cs-accent-mid:  rgba(234, 179, 8, 0.22);
   --cs-red:         #ef4444;
   --cs-red-soft:    rgba(239, 68, 68, 0.15);
   --cs-radius:      8px;
@@ -34,14 +35,12 @@
   right: 16px;
   z-index: 2147483647;
   width: min(356px, calc(100vw - 24px));
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(11, 17, 32, 0.98));
+  background: var(--cs-bg-panel);
   border: 1px solid var(--cs-border);
   border-radius: 12px;
   box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.45),
-    0 4px 14px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(14px);
+    0 14px 32px rgba(0, 0, 0, 0.34),
+    0 2px 8px rgba(0, 0, 0, 0.22);
   font-family: var(--cs-font);
   font-size: 13px;
   color: var(--cs-text);
@@ -49,17 +48,6 @@
   text-align: right;
   overflow: hidden;
   animation: cs-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-#cart-sniper-widget::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--cs-accent);
-  border-radius: 12px 12px 0 0;
 }
 
 @keyframes cs-in {
@@ -79,8 +67,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 12px 14px;
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(17, 24, 39, 0.94));
+  background: rgba(15, 23, 42, 0.96);
   border-bottom: 1px solid var(--cs-border);
 }
 
@@ -90,7 +79,20 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--cs-accent);
+  color: var(--cs-text-muted);
+}
+
+.cs-header-scope {
+  margin-inline-start: auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--cs-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .cs-close {
@@ -107,13 +109,13 @@
 
 .cs-close:hover {
   color: var(--cs-text);
-  background: rgba(245, 158, 11, 0.09);
-  border-color: rgba(245, 158, 11, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(148, 163, 184, 0.16);
 }
 
 .cs-close:focus-visible,
 .cs-details-toggle:focus-visible {
-  outline: 2px solid rgba(245, 158, 11, 0.5);
+  outline: 2px solid rgba(148, 163, 184, 0.45);
   outline-offset: 2px;
 }
 
@@ -126,26 +128,25 @@
 .cs-summary {
   margin-bottom: 12px;
   padding: 12px;
-  border: 1px solid rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(234, 179, 8, 0.16);
   border-radius: 10px;
   background:
-    linear-gradient(180deg, rgba(245, 158, 11, 0.09), rgba(245, 158, 11, 0.03)),
-    rgba(15, 23, 42, 0.72);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    linear-gradient(180deg, rgba(234, 179, 8, 0.05), rgba(15, 23, 42, 0.76) 42%),
+    rgba(15, 23, 42, 0.76);
 }
 
 .cs-summary-muted {
   border-color: rgba(100, 116, 139, 0.3);
   background:
-    linear-gradient(180deg, rgba(148, 163, 184, 0.08), rgba(148, 163, 184, 0.03)),
-    rgba(15, 23, 42, 0.72);
+    linear-gradient(180deg, rgba(148, 163, 184, 0.06), rgba(15, 23, 42, 0.74) 42%),
+    rgba(15, 23, 42, 0.74);
 }
 
 .cs-summary-win {
-  border-color: rgba(34, 197, 94, 0.22);
+  border-color: rgba(34, 197, 94, 0.18);
   background:
-    linear-gradient(180deg, rgba(34, 197, 94, 0.12), rgba(34, 197, 94, 0.04)),
-    rgba(15, 23, 42, 0.72);
+    linear-gradient(180deg, rgba(34, 197, 94, 0.07), rgba(15, 23, 42, 0.76) 42%),
+    rgba(15, 23, 42, 0.76);
 }
 
 .cs-summary-neutral {
@@ -187,7 +188,7 @@
 }
 
 .cs-summary-total-muted {
-  color: var(--cs-text);
+  color: #e2e8f0;
 }
 
 .cs-summary-meta {
@@ -204,6 +205,15 @@
   color: var(--cs-text-muted);
 }
 
+.cs-summary-scope {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--cs-text-dim);
+}
+
 .cs-summary-raw {
   margin-top: 10px;
   padding-top: 10px;
@@ -218,7 +228,6 @@
   font-weight: 600;
 }
 
-.cs-summary-chip,
 .cs-chain-badge {
   display: inline-flex;
   align-items: center;
@@ -234,18 +243,10 @@
   line-height: 1;
 }
 
-.cs-summary-chip-accent,
 .cs-chain-badge-cheapest {
-  border-color: rgba(245, 158, 11, 0.24);
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--cs-accent);
-}
-
-.cs-summary-chip-warning,
-.cs-chain-badge-lowest {
-  border-color: rgba(248, 113, 113, 0.22);
-  background: rgba(248, 113, 113, 0.1);
-  color: #fca5a5;
+  border-color: rgba(234, 179, 8, 0.24);
+  background: rgba(234, 179, 8, 0.12);
+  color: #fde68a;
 }
 
 .cs-section-label {
@@ -267,7 +268,7 @@
 .cs-price {
   font-size: 28px;
   font-weight: 700;
-  color: var(--cs-accent);
+  color: var(--cs-text);
   line-height: 1;
   letter-spacing: -0.03em;
   margin-bottom: 8px;
@@ -307,7 +308,7 @@
   width: 14px;
   height: 14px;
   border: 2px solid var(--cs-border);
-  border-top-color: var(--cs-accent);
+  border-top-color: var(--cs-text-muted);
   border-radius: 50%;
   animation: cs-spin 0.8s linear infinite;
   flex-shrink: 0;
@@ -377,11 +378,10 @@
 }
 
 .cs-chain-cheapest {
-  border-color: var(--cs-accent);
+  border-color: rgba(234, 179, 8, 0.28);
   background:
-    linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.05)),
-    rgba(15, 23, 42, 0.92);
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.08), 0 0 16px var(--cs-accent-soft);
+    linear-gradient(180deg, rgba(234, 179, 8, 0.07), rgba(17, 24, 39, 0.96) 50%),
+    rgba(17, 24, 39, 0.96);
 }
 
 .cs-chain-source {
@@ -400,12 +400,6 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 7px;
-}
-
-.cs-chain-badge-source {
-  border-color: rgba(100, 116, 139, 0.26);
-  background: rgba(100, 116, 139, 0.12);
-  color: var(--cs-text-muted);
 }
 
 .cs-chain-badge-unavailable {
@@ -433,7 +427,7 @@
 }
 
 .cs-chain-cheapest .cs-chain-name {
-  color: var(--cs-accent);
+  color: #fef3c7;
 }
 
 .cs-chain-total-wrap {
@@ -466,79 +460,23 @@
   color: var(--cs-accent);
 }
 
-.cs-chain-source .cs-chain-total-label,
-.cs-chain-source .cs-chain-badge-source {
+.cs-chain-source .cs-chain-total-label {
   color: var(--cs-text-dim);
 }
 
 .cs-chain-unavailable {
   border-color: rgba(100, 116, 139, 0.28);
   background: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.88));
-  opacity: 0.82;
+  opacity: 0.9;
 }
 
-.cs-chain-unavailable-note {
+.cs-chain-supporting {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--cs-text-muted);
-}
-
-.cs-chain-shipping {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.cs-chain-primary-mode {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.cs-chain-alt-modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-top: 6px;
-  opacity: 0.72;
-}
-
-.cs-ship-opt {
-  font-size: 11.5px;
-  color: var(--cs-text-muted);
-  white-space: nowrap;
-}
-
-.cs-ship-opt-primary {
-  font-size: 12px;
-}
-
-.cs-ship-opt strong {
-  color: var(--cs-text);
-  font-weight: 600;
-}
-
-.cs-chain-cheapest .cs-ship-opt strong {
-  color: var(--cs-accent);
-}
-
-.cs-ship-fee {
-  color: var(--cs-text-dim);
-  font-weight: 400;
-}
-
-.cs-ship-gap {
-  color: #fca5a5;
-}
-
-.cs-ship-unavail {
-  opacity: 0.72;
 }
 
 /* ── Item breakdown (details/summary) ───────────────────────────────────────── */
@@ -572,7 +510,7 @@
 
 .cs-details-toggle:hover {
   color: var(--cs-text);
-  border-color: rgba(245, 158, 11, 0.18);
+  border-color: rgba(148, 163, 184, 0.18);
   background: rgba(15, 23, 42, 0.9);
 }
 
@@ -652,7 +590,7 @@
 
 .cs-item-matched .cs-item-price {
   font-variant-numeric: tabular-nums;
-  color: var(--cs-accent);
+  color: var(--cs-text);
   white-space: nowrap;
   flex-shrink: 0;
   font-size: 12.5px;

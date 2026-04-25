@@ -94,6 +94,11 @@ class YohananofScraper(CommonXMLScraper):
         logger.debug("Cookies: %s", dict(self._session.cookies))
 
         search = f"{file_type.value}{self.chain_code}"
+        if file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA) and self._online_store_id:
+            # Yohananof exposes unrelated store files and special aggregate-like
+            # filenames (for example 7999 / 000-007). Only an exact online-store
+            # filename is safe to ingest for the source store.
+            search += f"-{self._online_store_id}-"
 
         api_url = f"{self._base_url}/file/json/dir"
         api_data = {"sEcho": 1, "sSearch": search, "csrftoken": file_csrf}
@@ -107,7 +112,14 @@ class YohananofScraper(CommonXMLScraper):
         result = resp.json()
         total = int(result.get("iTotalDisplayRecords", 0))
         if total == 0:
-            logger.warning("No %s files found.", file_type.value)
+            if file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA) and self._online_store_id:
+                logger.warning(
+                    "No %s files found for online store %s. Refusing to fall back to non-store-specific Yohananof files.",
+                    file_type.value,
+                    self._online_store_id,
+                )
+            else:
+                logger.warning("No %s files found.", file_type.value)
             return None
 
         # 2. Fetch last entry (server returns oldest-first)
@@ -124,7 +136,14 @@ class YohananofScraper(CommonXMLScraper):
         result = resp.json()
         files = result.get("aaData", [])
         if not files:
-            logger.warning("No %s files found.", file_type.value)
+            if file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA) and self._online_store_id:
+                logger.warning(
+                    "No %s files found for online store %s. Refusing to fall back to non-store-specific Yohananof files.",
+                    file_type.value,
+                    self._online_store_id,
+                )
+            else:
+                logger.warning("No %s files found.", file_type.value)
             return None
 
         entry = files[0]

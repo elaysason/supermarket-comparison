@@ -24,7 +24,7 @@ const CHAINS = {
     chain_code: "7290058140886",
     chain_name: "רמי לוי",
   },
-  "yohananof.co.il": {
+  "yochananof.co.il": {
     chain_code: "7290803800003",
     chain_name: "יוחננוף",
   },
@@ -55,6 +55,8 @@ function setState(next) {
 
 let domNames = {};       // barcode → display name from cart page
 let domQuantities = {};  // barcode → integer quantity (default 1)
+let lastCartSignature = null;
+let runVersion = 0;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -66,7 +68,34 @@ function getCurrentChain() {
   return null;
 }
 
+function getOpenPopupNames() {
+  return new Set(
+    new URLSearchParams(window.location.search)
+      .getAll("openPopups")
+      .map((value) => String(value).split(";")[0])
+      .filter(Boolean)
+  );
+}
+
+function isYochananofCheckoutView() {
+  if (!window.location.hostname.includes("yochananof.co.il")) return false;
+  if (window.location.pathname.toLowerCase().startsWith("/checkout")) return true;
+  return Boolean(document.querySelector('[data-aria-desc="dialog_order_summary"]'));
+}
+
+function isYochananofCartView() {
+  if (!window.location.hostname.includes("yochananof.co.il")) return false;
+  if (isYochananofCheckoutView()) return false;
+
+  const openPopups = getOpenPopupNames();
+  return openPopups.has("cart") || document.querySelectorAll('[data-aria-desc="cart_item"]').length > 0;
+}
+
 function isCartPage() {
+  if (window.location.hostname.includes("yochananof.co.il")) {
+    return isYochananofCartView();
+  }
+
   const url = (window.location.pathname + window.location.hash + window.location.search).toLowerCase();
   return /cart|checkout|basket|dashboard|order|עגלה|קופה/.test(url);
 }
@@ -119,17 +148,98 @@ function extractQtyFromContainer(el) {
     if (v > 0) return v;
   }
 
-  // Walk up to the nearest listitem / row so sibling elements are reachable
-  const row = el.closest('[role="listitem"], .cart-item, .cart-product, li') || el;
+  // Prefer Yohananof's explicit cart row wrapper when present, otherwise fall
+  // back to the generic list/cart row containers.
+  const yohananofRow = el.matches?.('[data-aria-desc="cart_item"]')
+    ? el
+    : el.closest('[data-aria-desc="cart_item"]');
+  const row = yohananofRow || el.closest('[role="listitem"], .cart-item, .cart-product, li') || el;
 
-  // 1. Rami Levi counter: .num-span span (plain digit inside the stepper widget)
+  function extractYohananofReactQty(node) {
+    const reactInternals = Object.getOwnPropertyNames(node)
+      .filter((key) => key.startsWith("__reactFiber$") || key.startsWith("__reactProps$"))
+      .map((key) => node[key])
+      .filter(Boolean);
+    if (reactInternals.length === 0) return null;
+
+    function getCartItemQuantity(candidate) {
+      if (!candidate || typeof candidate !== "object") return null;
+
+      const item = candidate.item && typeof candidate.item === "object"
+        ? candidate.item
+        : candidate;
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1) return null;
+
+      const product = item.product;
+      if (!product || typeof product !== "object") return null;
+
+      const sku = String(product.sku || "").trim();
+      const imageUrl = String(product.image?.url || "").trim();
+      const name = String(product.name || "").trim();
+      const hasCartIdentity =
+        /^\d{4,14}$/.test(sku) ||
+        /\d{6,14}_s\d+_/i.test(imageUrl) ||
+        name.length > 1;
+
+      return hasCartIdentity ? quantity : null;
+    }
+
+    const queue = [...reactInternals];
+    const seen = new WeakSet();
+    let inspected = 0;
+
+    while (queue.length > 0 && inspected < 40) {
+      const current = queue.shift();
+      if (!current || typeof current !== "object" || seen.has(current)) continue;
+
+      seen.add(current);
+      inspected += 1;
+
+      for (const candidate of [current.memoizedProps, current.pendingProps, current]) {
+        const quantity = getCartItemQuantity(candidate);
+        if (quantity) return quantity;
+      }
+
+      if (current.return && typeof current.return === "object") queue.push(current.return);
+      if (current.alternate && typeof current.alternate === "object") queue.push(current.alternate);
+    }
+
+    return null;
+  }
+
+  // 1. Yohananof cart counter: explicit amount button inside cart row
+  const yohananofCounters = Array.from(
+    row.querySelectorAll('[data-aria-desc="button_product_counter_amount"]')
+  );
+  if (yohananofCounters.length > 0) {
+    const visibleCounters = yohananofCounters.filter((node) => {
+      const style = window.getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    });
+    const quantityNodes = visibleCounters.length > 0 ? visibleCounters : yohananofCounters;
+    const values = quantityNodes
+      .map((node) => parseInt(node.textContent.trim(), 10))
+      .filter((value) => value > 0);
+    if (values.length > 0) return Math.max(...values);
+  }
+
+  // 1a. Yohananof React props/fiber fallback: the live row component carries
+  // the cart item object with `quantity` even when the visible DOM does not.
+  if (yohananofRow) {
+    const reactQty = extractYohananofReactQty(row);
+    if (reactQty) return reactQty;
+  }
+
+  // 2. Rami Levi counter: .num-span span (plain digit inside the stepper widget)
   const numSpan = row.querySelector(".num-span span, .num-span");
   if (numSpan) {
     const v = parseInt(numSpan.textContent.trim(), 10);
     if (v > 0) return v;
   }
 
-  // 2. Explicit quantity input field (Shufersal and generic)
+  // 3. Explicit quantity input field (Shufersal and generic)
   const inputSels = [
     'input[type="number"]',
     'input[class*="qty"]',
@@ -145,7 +255,7 @@ function extractQtyFromContainer(el) {
     }
   }
 
-  // 3. data-quantity / data-qty attribute anywhere in the row
+  // 4. data-quantity / data-qty attribute anywhere in the row
   for (const attr of ["data-quantity", "data-qty", "data-count", "data-amount"]) {
     const node = row.matches(`[${attr}]`) ? row : row.querySelector(`[${attr}]`);
     if (node) {
@@ -154,7 +264,7 @@ function extractQtyFromContainer(el) {
     }
   }
 
-  // 4. Class-name heuristics for quantity text nodes
+  // 5. Class-name heuristics for quantity text nodes
   const textCandidates = row.querySelectorAll(
     '[class*="qty"], [class*="quantity"], [class*="count"], [class*="amount"], [class*="כמות"]'
   );
@@ -168,20 +278,28 @@ function extractQtyFromContainer(el) {
 
 // ─── Barcode + name + quantity extraction ─────────────────────────────────────
 
-function extractBarcodes() {
+function buildCartSignature(barcodes, quantities) {
+  return [...barcodes]
+    .sort()
+    .map((barcode) => `${barcode}:${quantities[barcode] || 1}`)
+    .join("|");
+}
+
+function collectCartSnapshot({ log = true } = {}) {
   const barcodes = new Set();
-  domNames = {};
-  domQuantities = {};
+  const names = {};
+  const quantities = {};
+  const hostname = window.location.hostname;
 
   function register(barcode, containerEl) {
     if (!barcode || !/^\d{4,14}$/.test(barcode)) return;
     // Quantities accumulate — if the same barcode appears in multiple rows, sum them
     const qty = extractQtyFromContainer(containerEl);
-    domQuantities[barcode] = (domQuantities[barcode] || 0) + qty;
+    quantities[barcode] = (quantities[barcode] || 0) + qty;
     barcodes.add(barcode);
-    if (containerEl && !domNames[barcode]) {
+    if (containerEl && !names[barcode]) {
       const name = extractNameFromContainer(containerEl);
-      if (name) domNames[barcode] = name;
+      if (name) names[barcode] = name;
     }
   }
 
@@ -189,6 +307,23 @@ function extractBarcodes() {
     if (!raw) return;
     const stripped = String(raw).replace(/^[^0-9]+/, "").trim();
     register(stripped, containerEl);
+  }
+
+  function extractCodeFromImageSource(source) {
+    if (!source) return null;
+
+    const decoded = decodeURIComponent(source);
+    const patterns = [
+      /(?:^|\/)(\d{6,14})_s\d+_[^/?#]+\.(?:jpg|jpeg|png|webp)/i,
+      /_P_(\d{7,14})(?:_\d+)?\./i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = decoded.match(pattern);
+      if (match) return match[1];
+    }
+
+    return null;
   }
 
   // Strategy 1 (Shufersal): article.miglog-incart[data-product-code]
@@ -213,6 +348,22 @@ function extractBarcodes() {
     const row = el.closest('[role="listitem"]') || el;
     register(raw, row);
   });
+
+  // Strategy 2a (Yohananof cart drawer): use the live cart row itself, which
+  // already exposes both the barcode image and the working quantity sources.
+  if (hostname.includes("yochananof.co.il") && barcodes.size === 0) {
+    document.querySelectorAll('[data-aria-desc="cart_item"]').forEach((row) => {
+      const images = row.querySelectorAll('img[src], img[srcset]');
+      for (const img of images) {
+        const candidates = [img.currentSrc, img.getAttribute("src"), img.getAttribute("srcset")];
+        const code = candidates.map(extractCodeFromImageSource).find(Boolean);
+        if (code) {
+          register(code, row);
+          break;
+        }
+      }
+    });
+  }
 
   // Strategies 3+ are only used when neither Shufersal nor Rami Levi patterns
   // matched anything — i.e. we're on Yohananof or an unknown site layout.
@@ -252,11 +403,19 @@ function extractBarcodes() {
 
   }
 
-  const result = Array.from(barcodes);
-  console.log(`[CartSniper] extractBarcodes() found ${result.length} barcode(s):`, result);
-  console.log("[CartSniper] quantities:", domQuantities);
-  console.log("[CartSniper] DOM names:", domNames);
-  if (result.length === 0) {
+  const snapshot = {
+    barcodes: Array.from(barcodes),
+    names,
+    quantities,
+  };
+  snapshot.signature = buildCartSignature(snapshot.barcodes, snapshot.quantities);
+
+  if (log) {
+    console.log(`[CartSniper] extractBarcodes() found ${snapshot.barcodes.length} barcode(s):`, snapshot.barcodes);
+    console.log("[CartSniper] quantities:", snapshot.quantities);
+    console.log("[CartSniper] DOM names:", snapshot.names);
+  }
+  if (log && snapshot.barcodes.length === 0) {
     console.warn(
       "[CartSniper] No barcodes found. Debug in DevTools:\n" +
       "  // Shufersal:\n" +
@@ -268,12 +427,27 @@ function extractBarcodes() {
       "  // Also check img src for _P_<EAN> pattern"
     );
   }
-  return result;
+  return snapshot;
+}
+
+function applyCartSnapshot(snapshot) {
+  domNames = snapshot.names;
+  domQuantities = snapshot.quantities;
+}
+
+function extractBarcodes() {
+  const snapshot = collectCartSnapshot();
+  applyCartSnapshot(snapshot);
+  return snapshot.barcodes;
 }
 
 // ─── Cart DOM readiness ───────────────────────────────────────────────────────
 
 function cartItemsPresent() {
+  if (window.location.hostname.includes("yochananof.co.il")) {
+    return isYochananofCartView();
+  }
+
   if (document.querySelectorAll("article.miglog-incart[data-product-code]").length > 0) return true;
   if (document.querySelectorAll("article[data-product-code]").length > 0) return true;
   if (document.querySelectorAll('input[name="productCodePost"]').length > 0) return true;
@@ -311,7 +485,7 @@ function showLoadingWidget() {
   w.id = WIDGET_ID;
   w.className = "cart-sniper-widget cart-sniper-loading";
   w.innerHTML = `
-    <div class="cs-header"><span class="cs-logo">Cart Sniper</span></div>
+    <div class="cs-header"><span class="cs-logo">סל קל</span></div>
     <div class="cs-body">
       <div class="cs-loading-shell">
         <span class="cs-spinner"></span>
@@ -363,26 +537,83 @@ function resolveItemName(item) {
   return null;
 }
 
-function getOrderGapText(chain, optionType = null) {
-  if (!chain?.shipping?.length) return null;
+function getOptionGapText(chain, option) {
+  if (!option?.unavailable || option.min_order == null) return null;
 
-  const relevantOptions = optionType
-    ? chain.shipping.filter((option) => option.option_type === optionType)
-    : chain.shipping;
+  const gap = Number((option.min_order - chain.items_total).toFixed(2));
+  if (gap <= 0) return null;
+  return `חסרים ${formatCurrencyText(gap)} למינימום`;
+}
 
-  let smallestGap = null;
-  for (const option of relevantOptions) {
-    if (!option.unavailable || option.min_order == null) continue;
-    const gap = Number((option.min_order - chain.items_total).toFixed(2));
-    if (gap <= 0) continue;
-    if (smallestGap == null || gap < smallestGap) smallestGap = gap;
-  }
+function getOptionGapBadgeText(chain, option) {
+  if (!option?.unavailable || option.min_order == null) return null;
 
-  return smallestGap == null ? null : `חסרים ${formatCurrencyText(smallestGap)} למינימום`;
+  const gap = Number((option.min_order - chain.items_total).toFixed(2));
+  if (gap <= 0) return null;
+  return `חסרים ${formatCurrencyText(gap)}`;
 }
 
 function getDisplayTotal(chain) {
   return chain.order_total ?? chain.items_total;
+}
+
+function getOrderBreakdown(chain, optionType) {
+  if (!optionType) return null;
+
+  const option = chain.shipping.find((shippingOption) => shippingOption.option_type === optionType);
+  if (!option || option.unavailable || chain.order_total == null) return null;
+
+  return {
+    optionType,
+    fee: option.fee,
+    total: chain.order_total,
+    feeLabel: option.fee === 0 ? "חינם" : formatCurrencyHtml(option.fee),
+  };
+}
+
+function getOptionTotal(chain, option) {
+  if (!option) return null;
+  return Number((chain.items_total + option.fee).toFixed(2));
+}
+
+function getBestAvailableAlternateOption(chain, optionType) {
+  const alternateOptions = optionType
+    ? chain.shipping.filter((option) => option.option_type !== optionType)
+    : chain.shipping;
+
+  const availableOption = alternateOptions.find((option) => !option.unavailable);
+  if (availableOption) return availableOption;
+
+  return alternateOptions.find((option) => option.min_order != null) || alternateOptions[0] || null;
+}
+
+function getAlternateOptionTotal(chain, option) {
+  return getOptionTotal(chain, option);
+}
+
+function getAlternateOptionInfo(chain, optionType) {
+  const option = getBestAvailableAlternateOption(chain, optionType);
+  if (!option) return null;
+
+  return {
+    option,
+    total: getAlternateOptionTotal(chain, option),
+    gapText: getOptionGapText(chain, option),
+  };
+}
+
+function getCheapestOverallChain(sourceChain, chains) {
+  const eligibleChains = [sourceChain, ...chains].filter((chain) => chain?.order_total != null);
+  if (eligibleChains.length === 0) return null;
+
+  return eligibleChains.sort((a, b) => a.order_total - b.order_total)[0];
+}
+
+function getLowestItemsChain(sourceChain, chains) {
+  const comparableChains = [sourceChain, ...chains].filter(Boolean);
+  if (comparableChains.length === 0) return null;
+
+  return comparableChains.sort((a, b) => a.items_total - b.items_total)[0];
 }
 
 function getComparisonModeLabel(optionType) {
@@ -391,38 +622,213 @@ function getComparisonModeLabel(optionType) {
   return "הזמנה";
 }
 
-function getUnavailableBadgeText(optionType) {
+function isPartialComparison(matchedCount, totalCount) {
+  return Boolean(totalCount) && matchedCount < totalCount;
+}
+
+function getComparisonScopeText(matchedCount, totalCount) {
+  if (!isPartialComparison(matchedCount, totalCount)) return null;
+  return `השוואה חלקית: ${matchedCount} מתוך ${totalCount} פריטים בעגלה נכללו בהשוואה.`;
+}
+
+function getComparisonScopeShortText(matchedCount, totalCount) {
+  if (!isPartialComparison(matchedCount, totalCount)) return null;
+  return `${matchedCount}/${totalCount} פריטים בהשוואה`;
+}
+
+function getUnavailablePrimaryDisplay(chain, optionType) {
+  const alternateInfo = getAlternateOptionInfo(chain, optionType);
+
+  if (alternateInfo?.total != null) {
+    const modeLabel = getComparisonModeLabel(alternateInfo.option.option_type);
+    return {
+      label: `סה"כ ${modeLabel}`,
+      total: alternateInfo.total,
+    };
+  }
+
+  return {
+    label: "סל ההשוואה",
+    total: chain.items_total,
+  };
+}
+
+function getChainDisplayModel(chain, optionType, isSource = false, matchedCount = 0, totalCount = 0) {
+  const isUnavailable = chain.order_total == null;
+  const modeLabel = getComparisonModeLabel(optionType);
+  const primaryLabel = `סה"כ ${modeLabel}`;
+  const label = isPartialComparison(matchedCount, totalCount)
+    ? `${primaryLabel} להשוואה`
+    : isSource
+      ? `${primaryLabel} לעגלה שלך`
+      : primaryLabel;
+
+  if (!isUnavailable) {
+    return {
+      isUnavailable: false,
+      label,
+      total: getDisplayTotal(chain),
+      supportingText: getRowSupportingText(chain, optionType, matchedCount, totalCount),
+      badgeText: null,
+    };
+  }
+
+  const unavailablePrimaryDisplay = getUnavailablePrimaryDisplay(chain, optionType);
+  const unavailableLabel = isPartialComparison(matchedCount, totalCount) && unavailablePrimaryDisplay.label.startsWith("סה\"כ ")
+    ? `${unavailablePrimaryDisplay.label} להשוואה`
+    : unavailablePrimaryDisplay.label;
+
+  return {
+    isUnavailable: true,
+    label: unavailableLabel,
+    total: unavailablePrimaryDisplay.total,
+    supportingText: getRowSupportingText(chain, optionType, matchedCount, totalCount),
+    badgeText: getUnavailableBadgeText(chain, optionType),
+  };
+}
+
+function getUnavailableSecondaryText(chain, optionType) {
+  if (!optionType) return null;
+
+  const selectedOption = chain.shipping.find((option) => option.option_type === optionType);
+  if (!selectedOption) return `אין ${getComparisonModeLabel(optionType)}`;
+
+  const gapText = getOptionGapText(chain, selectedOption);
+  return gapText || `${getComparisonModeLabel(optionType)} לא זמין כרגע`;
+}
+
+function getRowSupportingText(chain, optionType, matchedCount = 0, totalCount = 0) {
+  if (!optionType) {
+    return `סל ההשוואה ${formatCurrencyHtml(chain.items_total)}`;
+  }
+
+  const modeLabel = getComparisonModeLabel(optionType);
+  const selectedOption = chain.shipping.find((option) => option.option_type === optionType);
+  const orderBreakdown = getOrderBreakdown(chain, optionType);
+  if (orderBreakdown) {
+    return `סל ${formatCurrencyHtml(chain.items_total)} + ${modeLabel} ${orderBreakdown.feeLabel}`;
+  }
+
+  const parts = [];
+  const alternateInfo = getAlternateOptionInfo(chain, optionType);
+  const selectedModeLabel = getComparisonModeLabel(optionType);
+
+  if (alternateInfo?.total != null) {
+    const alternateModeLabel = getComparisonModeLabel(alternateInfo.option.option_type);
+    parts.push(`סל ${formatCurrencyHtml(chain.items_total)} + ${alternateModeLabel} ${alternateInfo.option.fee === 0 ? "חינם" : formatCurrencyHtml(alternateInfo.option.fee)}`);
+
+    const unavailableSecondaryText = getUnavailableSecondaryText(chain, optionType);
+    if (unavailableSecondaryText) parts.push(unavailableSecondaryText);
+
+    return parts.join(" · ");
+  }
+
+  if (selectedOption) {
+    parts.push(`סל ${formatCurrencyHtml(chain.items_total)} + ${modeLabel} ${selectedOption.fee === 0 ? "חינם" : formatCurrencyHtml(selectedOption.fee)}`);
+
+    const unavailableSecondaryText = getUnavailableSecondaryText(chain, optionType);
+    if (unavailableSecondaryText) parts.push(unavailableSecondaryText);
+  } else {
+    parts.push(`אין ${modeLabel}`);
+  }
+
+  if (alternateInfo?.total != null) {
+    parts.push(`ב${getComparisonModeLabel(alternateInfo.option.option_type)} ${formatCurrencyHtml(alternateInfo.total)}${alternateInfo.gapText ? `, ${alternateInfo.gapText}` : ""}`);
+  }
+
+  return parts.join(" · ");
+}
+
+function getAlternateModeNote(chain, optionType) {
+  const alternateInfo = getAlternateOptionInfo(chain, optionType);
+  if (!alternateInfo) return null;
+
+  if (!alternateInfo.option.unavailable) {
+    return `זמין רק ב${getComparisonModeLabel(alternateInfo.option.option_type)}.`;
+  }
+
+  return alternateInfo.gapText
+    ? `ב${getComparisonModeLabel(alternateInfo.option.option_type)} ${alternateInfo.gapText}.`
+    : "הרשת זמינה רק באפשרויות אחרות.";
+}
+
+function getUnavailableBadgeText(chain, optionType) {
   if (!optionType) return "לא זמין להזמנה";
+
+  const alternateInfo = getAlternateOptionInfo(chain, optionType);
+  if (alternateInfo?.gapText) return getOptionGapBadgeText(chain, alternateInfo.option) || "מינימום לא הושג";
+  if (alternateInfo?.total != null && !alternateInfo.option.unavailable) return `${getComparisonModeLabel(alternateInfo.option.option_type)} בלבד`;
+
+  const selectedOption = chain.shipping.find((option) => option.option_type === optionType);
+  if (!selectedOption) return `אין ${getComparisonModeLabel(optionType)}`;
+  if (getOptionGapText(chain, selectedOption)) return getOptionGapBadgeText(chain, selectedOption) || "מינימום לא הושג";
   return `לא זמין ב${getComparisonModeLabel(optionType)}`;
 }
 
-function getUnavailableNoteText(optionType) {
-  if (!optionType) return "לא זמין כרגע להזמנה";
-  return `לא זמין כרגע ב${getComparisonModeLabel(optionType)}`;
+function getUnavailableNoteText(chain, optionType) {
+  if (!optionType) return "לא זמין כרגע להזמנה.";
+
+  const selectedModeLabel = getComparisonModeLabel(optionType);
+  const selectedOption = chain.shipping.find((option) => option.option_type === optionType);
+
+  if (!selectedOption) {
+    const alternateModeNote = getAlternateModeNote(chain, optionType);
+    return alternateModeNote
+      ? `אין ${selectedModeLabel} ברשת הזו. ${alternateModeNote}`
+      : `אין ${selectedModeLabel} ברשת הזו.`;
+  }
+
+  const gapText = getOptionGapText(chain, selectedOption);
+  if (gapText) return `לא זמין כרגע ב${selectedModeLabel}. ${gapText}.`;
+
+  return `לא זמין כרגע ב${selectedModeLabel}.`;
 }
 
-function getSummaryMarkup(lowestItemsChain, cheapestChain, sourceChain, comparisonOptionType) {
+function getSummaryMarkup(lowestItemsChain, cheapestOverallChain, cheapestCompetitor, sourceChain, comparisonOptionType, matchedCount, totalCount) {
   const sourceTotal = sourceChain?.order_total ?? null;
-  const competitorName = escapeHtml(toDisplayChainName(cheapestChain.chain_name));
-  const competitorTotal = formatCurrencyHtml(cheapestChain.total_price);
+  const winnerName = escapeHtml(toDisplayChainName(cheapestOverallChain.chain_name));
+  const winnerTotal = formatCurrencyHtml(cheapestOverallChain.order_total ?? cheapestOverallChain.total_price);
   const comparisonModeLabel = getComparisonModeLabel(comparisonOptionType);
-  const rawLowestHtml = lowestItemsChain && lowestItemsChain.chain_code !== cheapestChain.chain_code
-    ? `<div class="cs-summary-raw">סל המוצרים הזול ביותר: <strong>${escapeHtml(toDisplayChainName(lowestItemsChain.chain_name))}</strong> ${formatCurrencyHtml(lowestItemsChain.items_total)}</div>`
+  const comparisonScopeText = getComparisonScopeText(matchedCount, totalCount);
+  const rawLowestHtml = lowestItemsChain && lowestItemsChain.chain_code !== cheapestOverallChain.chain_code
+    ? `<div class="cs-summary-raw">סל ההשוואה הזול ביותר: <strong>${escapeHtml(toDisplayChainName(lowestItemsChain.chain_name))}</strong> ${formatCurrencyHtml(lowestItemsChain.items_total)}</div>`
     : "";
+  const scopeHtml = comparisonScopeText ? `<div class="cs-summary-scope">${comparisonScopeText}</div>` : "";
 
   if (!sourceChain || sourceTotal == null) {
     return `
       <div class="cs-summary">
         <div class="cs-summary-kicker">הכי זול ב${comparisonModeLabel}</div>
         <div class="cs-summary-main">
-          <span class="cs-summary-title">${competitorName}</span>
-          <span class="cs-summary-total">${competitorTotal}</span>
+          <span class="cs-summary-title">${winnerName}</span>
+          <span class="cs-summary-total">${winnerTotal}</span>
         </div>
+        ${scopeHtml}
         ${rawLowestHtml}
       </div>`;
   }
 
-  const delta = Number((sourceTotal - cheapestChain.total_price).toFixed(2));
+  const compareTarget = cheapestOverallChain.chain_code === sourceChain.chain_code
+    ? cheapestCompetitor
+    : cheapestOverallChain;
+
+  if (!compareTarget) {
+    return `
+      <div class="cs-summary cs-summary-win">
+        <div class="cs-summary-kicker">העגלה שלך עדיפה</div>
+        <div class="cs-summary-main">
+          <span class="cs-summary-title">${escapeHtml(toDisplayChainName(sourceChain.chain_name))}</span>
+          <span class="cs-summary-total">${formatCurrencyHtml(sourceTotal)}</span>
+        </div>
+        <div class="cs-summary-copy">העגלה שלך היא האפשרות היחידה שזמינה כרגע ב${comparisonModeLabel}.</div>
+        ${scopeHtml}
+        ${rawLowestHtml}
+      </div>`;
+  }
+
+  const compareTargetTotal = compareTarget.order_total ?? compareTarget.total_price;
+  const compareTargetName = escapeHtml(toDisplayChainName(compareTarget.chain_name));
+  const delta = Number((sourceTotal - compareTargetTotal).toFixed(2));
 
   if (Math.abs(delta) < 0.005) {
     return `
@@ -430,9 +836,10 @@ function getSummaryMarkup(lowestItemsChain, cheapestChain, sourceChain, comparis
         <div class="cs-summary-kicker">השוואת ${comparisonModeLabel}</div>
         <div class="cs-summary-main">
           <span class="cs-summary-title">אין פער כרגע</span>
-          <span class="cs-summary-total">${competitorTotal}</span>
+          <span class="cs-summary-total">${formatCurrencyHtml(compareTargetTotal)}</span>
         </div>
-        <div class="cs-summary-copy">העגלה שלך ו-${competitorName} באותו מחיר ב${comparisonModeLabel}.</div>
+        <div class="cs-summary-copy">העגלה שלך ו-${compareTargetName} באותו מחיר ב${comparisonModeLabel}.</div>
+        ${scopeHtml}
         ${rawLowestHtml}
       </div>`;
   }
@@ -445,7 +852,8 @@ function getSummaryMarkup(lowestItemsChain, cheapestChain, sourceChain, comparis
           <span class="cs-summary-title">${escapeHtml(toDisplayChainName(sourceChain.chain_name))}</span>
           <span class="cs-summary-total">${formatCurrencyHtml(sourceTotal)}</span>
         </div>
-        <div class="cs-summary-copy">${competitorName} יקר יותר ב${comparisonModeLabel} ב-${formatCurrencyHtml(Math.abs(delta))}.</div>
+        <div class="cs-summary-copy">${compareTargetName} יקר יותר ב${comparisonModeLabel} ב-${formatCurrencyHtml(Math.abs(delta))}.</div>
+        ${scopeHtml}
         ${rawLowestHtml}
       </div>`;
   }
@@ -453,17 +861,20 @@ function getSummaryMarkup(lowestItemsChain, cheapestChain, sourceChain, comparis
   return `
     <div class="cs-summary">
       <div class="cs-summary-kicker">הכי זול ב${comparisonModeLabel}</div>
-      <div class="cs-summary-main">
-        <span class="cs-summary-title">${competitorName}</span>
-        <span class="cs-summary-total">${competitorTotal}</span>
-      </div>
-      <div class="cs-summary-copy">חוסך ${formatCurrencyHtml(delta)} מול ${escapeHtml(toDisplayChainName(sourceChain.chain_name))} ב${comparisonModeLabel}.</div>
-      ${rawLowestHtml}
-    </div>`;
+        <div class="cs-summary-main">
+          <span class="cs-summary-title">${compareTargetName}</span>
+          <span class="cs-summary-total">${formatCurrencyHtml(compareTargetTotal)}</span>
+        </div>
+        <div class="cs-summary-copy">חוסך ${formatCurrencyHtml(delta)} מול ${escapeHtml(toDisplayChainName(sourceChain.chain_name))} ב${comparisonModeLabel}.</div>
+        ${scopeHtml}
+        ${rawLowestHtml}
+      </div>`;
 }
 
-function getUnavailableSummaryMarkup(lowestItemsChain, comparisonOptionType) {
+function getUnavailableSummaryMarkup(lowestItemsChain, comparisonOptionType, matchedCount, totalCount) {
   const comparisonModeLabel = getComparisonModeLabel(comparisonOptionType);
+  const comparisonScopeText = getComparisonScopeText(matchedCount, totalCount);
+  const scopeHtml = comparisonScopeText ? `<div class="cs-summary-scope">${comparisonScopeText}</div>` : "";
   if (!lowestItemsChain) {
     return `
       <div class="cs-summary cs-summary-muted">
@@ -472,18 +883,19 @@ function getUnavailableSummaryMarkup(lowestItemsChain, comparisonOptionType) {
           <span class="cs-summary-title">אין כרגע רשת זמינה</span>
         </div>
         <div class="cs-summary-copy">מצאנו מחירים, אבל אין כרגע רשת שניתן להשוות בה ${comparisonModeLabel}.</div>
+        ${scopeHtml}
       </div>`;
   }
 
-  const gapText = getOrderGapText(lowestItemsChain, comparisonOptionType);
   return `
     <div class="cs-summary cs-summary-muted">
-      <div class="cs-summary-kicker">סל המוצרים הזול ביותר כרגע</div>
+      <div class="cs-summary-kicker">סל ההשוואה הזול ביותר כרגע</div>
       <div class="cs-summary-main">
         <span class="cs-summary-title">${escapeHtml(toDisplayChainName(lowestItemsChain.chain_name))}</span>
         <span class="cs-summary-total cs-summary-total-muted">${formatCurrencyHtml(lowestItemsChain.items_total)}</span>
       </div>
-      <div class="cs-summary-copy">אי אפשר להזמין כרגע ב${comparisonModeLabel}.${gapText ? ` ${escapeHtml(gapText)}.` : ""}</div>
+      <div class="cs-summary-copy">${escapeHtml(getUnavailableNoteText(lowestItemsChain, comparisonOptionType))}</div>
+      ${scopeHtml}
     </div>`;
 }
 
@@ -505,7 +917,7 @@ function showResultWidget(data) {
   if (!cheapest_chain && chains.length === 0) {
     w.innerHTML = `
       <div class="cs-header">
-        <span class="cs-logo">Cart Sniper</span>
+        <span class="cs-logo">סל קל</span>
         <button class="cs-close" aria-label="סגור">&times;</button>
       </div>
       <div class="cs-body cs-nomatch">
@@ -514,67 +926,42 @@ function showResultWidget(data) {
       </div>
     `;
   } else {
-    const lowestItemsChain = chains.length > 0
-      ? [...chains].sort((a, b) => a.items_total - b.items_total)[0]
-      : null;
+    const lowestItemsChain = getLowestItemsChain(source_chain, chains);
     const lowestOrderableChain = chains.length > 0
       ? [...chains]
         .filter((chain) => chain.order_total != null)
         .sort((a, b) => a.order_total - b.order_total)[0] || null
       : null;
-    const summaryHtml = cheapest_chain
-      ? getSummaryMarkup(lowestItemsChain, cheapest_chain, source_chain, comparison_option_type)
-      : getUnavailableSummaryMarkup(lowestItemsChain, comparison_option_type);
-
-    // ── Helper: render a single chain row ──────────────────────────────────
-    const OPTION_LABEL = { delivery: "משלוח", pickup: "איסוף" };
+    const cheapestOverallChain = getCheapestOverallChain(source_chain, chains);
+    const summaryHtml = cheapestOverallChain
+      ? getSummaryMarkup(lowestItemsChain, cheapestOverallChain, cheapest_chain, source_chain, comparison_option_type, matched_count, total_count)
+      : getUnavailableSummaryMarkup(lowestItemsChain, comparison_option_type, matched_count, total_count);
 
     function renderChainRow(chain, options = {}) {
-      const { isCheapest = false, isSource = false } = options;
-      const isUnavailable = chain.order_total == null;
-      const orderGapText = getOrderGapText(chain, comparison_option_type);
-      const primaryOption = comparison_option_type
-        ? chain.shipping.find((option) => option.option_type === comparison_option_type)
-        : null;
-      const alternateOptions = comparison_option_type
-        ? chain.shipping.filter((option) => option.option_type !== comparison_option_type)
-        : chain.shipping;
+      const { isSource = false, isOverallCheapest = false } = options;
+      const displayModel = getChainDisplayModel(
+        chain,
+        comparison_option_type,
+        isSource,
+        matched_count,
+        total_count,
+      );
+      const { isUnavailable, supportingText } = displayModel;
       const rowClass = [
         "cs-chain-row",
-        isCheapest ? "cs-chain-cheapest" : "",
+        isOverallCheapest ? "cs-chain-cheapest" : "",
         isSource ? "cs-chain-source" : "",
         isUnavailable ? "cs-chain-unavailable" : "",
       ].filter(Boolean).join(" ");
       const badges = [
-        isSource ? '<span class="cs-chain-badge cs-chain-badge-source">העגלה שלך</span>' : "",
-        isCheapest && !isSource ? '<span class="cs-chain-badge cs-chain-badge-cheapest">הכי זול להזמנה</span>' : "",
-        !isCheapest && !isSource && lowestItemsChain?.chain_code === chain.chain_code
-          ? '<span class="cs-chain-badge cs-chain-badge-lowest">סל המוצרים הזול ביותר</span>'
+        isOverallCheapest
+          ? '<span class="cs-chain-badge cs-chain-badge-cheapest">הכי זול להזמנה</span>'
           : "",
-        !isSource && isUnavailable ? `<span class="cs-chain-badge cs-chain-badge-unavailable">${getUnavailableBadgeText(comparison_option_type)}</span>` : "",
+        !isSource && displayModel.badgeText ? `<span class="cs-chain-badge cs-chain-badge-unavailable">${displayModel.badgeText}</span>` : "",
       ].filter(Boolean).join("");
       const badgesHtml = badges ? `<div class="cs-chain-badges">${badges}</div>` : "";
-      function renderOption(s, isPrimary = false) {
-        const label = OPTION_LABEL[s.option_type] || s.option_type;
-        if (s.unavailable) {
-          const feeStr = s.fee === 0 ? "חינם" : formatCurrencyHtml(s.fee);
-          const gap = s.min_order != null ? Number((s.min_order - chain.items_total).toFixed(2)) : null;
-          const gapHtml = gap && gap > 0 ? ` <span class="cs-ship-gap">חסרים ${formatCurrencyHtml(gap)}</span>` : "";
-          return `<span class="cs-ship-opt${isPrimary ? " cs-ship-opt-primary" : ""} cs-ship-unavail">${label}: <span class="cs-ship-fee">${feeStr} (מינימום לא הושג)</span>${gapHtml}</span>`;
-        }
-        const feeStr = s.fee === 0 ? "חינם" : `+${formatCurrencyHtml(s.fee)}`;
-        const withFee = s.fee === 0 ? chain.items_total : chain.items_total + s.fee;
-        return `<span class="cs-ship-opt${isPrimary ? " cs-ship-opt-primary" : ""}">${label}: <strong>${formatCurrencyHtml(withFee)}</strong> <span class="cs-ship-fee">(${feeStr})</span></span>`;
-      }
-
-      const unavailableNoteHtml = isUnavailable
-        ? `<div class="cs-chain-unavailable-note">${getUnavailableNoteText(comparison_option_type)}.${orderGapText ? ` ${escapeHtml(orderGapText)}.` : ""}</div>`
-        : "";
-      const primaryModeHtml = !isUnavailable && primaryOption
-        ? `<div class="cs-chain-primary-mode">${renderOption(primaryOption, true)}</div>`
-        : "";
-      const alternateHtml = !isUnavailable && alternateOptions.length > 0
-        ? `<div class="cs-chain-alt-modes">${alternateOptions.map((option) => renderOption(option)).join("")}</div>`
+      const supportingHtml = supportingText
+        ? `<div class="cs-chain-supporting">${supportingText}</div>`
         : "";
 
       return `
@@ -585,19 +972,20 @@ function showResultWidget(data) {
               ${badgesHtml}
             </div>
             <div class="cs-chain-total-wrap">
-              <span class="cs-chain-total-label">${isUnavailable ? (isSource ? "סל מוצרים בעגלה שלך" : "סל מוצרים") : isSource ? `סה"כ ${getComparisonModeLabel(comparison_option_type)} לעגלה שלך` : `סה"כ ${getComparisonModeLabel(comparison_option_type)}`}</span>
-              <span class="cs-chain-total">${formatCurrencyHtml(getDisplayTotal(chain))}</span>
+              <span class="cs-chain-total-label">${displayModel.label}</span>
+              <span class="cs-chain-total">${formatCurrencyHtml(displayModel.total)}</span>
             </div>
           </div>
-          ${unavailableNoteHtml}
-          ${primaryModeHtml}
-          ${alternateHtml}
+          ${supportingHtml}
         </div>`;
     }
 
     // ── Source chain row (current store, shown above competitors) ──────────
     const sourceRowHtml = source_chain
-      ? renderChainRow(source_chain, { isSource: true })
+      ? renderChainRow(source_chain, {
+        isSource: true,
+        isOverallCheapest: cheapestOverallChain?.chain_code === source_chain.chain_code,
+      })
       : "";
 
     // ── Per-chain comparison table ──────────────────────────────────────────
@@ -622,12 +1010,14 @@ function showResultWidget(data) {
       return getDisplayTotal(a) - getDisplayTotal(b);
     });
     const chainRowsHtml = sortedChains.map((chain) =>
-      renderChainRow(chain, { isCheapest: cheapest_chain?.chain_code === chain.chain_code })
+      renderChainRow(chain, {
+        isOverallCheapest: cheapestOverallChain?.chain_code === chain.chain_code,
+      })
     ).join("");
     const detailsChainName = cheapest_chain?.chain_name || lowestItemsChain?.chain_name;
     const detailsLabel = detailsChainName
-      ? `פריטים מול ${escapeHtml(toDisplayChainName(detailsChainName))} (${matched_count}/${total_count} נמצאו)`
-      : `פירוט פריטים (${matched_count}/${total_count} נמצאו)`;
+      ? `פריטים מול ${escapeHtml(toDisplayChainName(detailsChainName))}`
+      : "פירוט פריטים";
 
     // ── Per-item breakdown ──────────────────────────────────────────────────
     const itemRowsHtml = items.map((item) => {
@@ -657,9 +1047,12 @@ function showResultWidget(data) {
       }
     }).join("");
 
+    const comparisonScopeShortText = getComparisonScopeShortText(matched_count, total_count);
+
     w.innerHTML = `
       <div class="cs-header">
-        <span class="cs-logo">Cart Sniper</span>
+        <span class="cs-logo">סל קל</span>
+        ${comparisonScopeShortText ? `<span class="cs-header-scope">${comparisonScopeShortText}</span>` : ""}
         <button class="cs-close" aria-label="סגור">&times;</button>
       </div>
       <div class="cs-body">
@@ -690,7 +1083,7 @@ function showErrorWidget(message) {
   w.className = "cart-sniper-widget cs-error-widget";
   w.innerHTML = `
     <div class="cs-header">
-      <span class="cs-logo">Cart Sniper</span>
+      <span class="cs-logo">סל קל</span>
       <button class="cs-close" aria-label="סגור">&times;</button>
     </div>
     <div class="cs-body cs-error">
@@ -725,22 +1118,33 @@ async function fetchComparison(chainCode, barcodes, quantities) {
 async function run() {
   if (state !== State.IDLE) return;
 
+  const runId = ++runVersion;
+
   const chain = getCurrentChain();
-  if (!chain || !isCartPage()) { removeWidget(); return; }
+  if (!chain || !isCartPage()) {
+    lastCartSignature = null;
+    removeWidget();
+    return;
+  }
 
   setState(State.WAITING);
 
   const ready = await waitForCartItems(8000);
+  if (runId !== runVersion) return;
   if (!ready) {
     console.warn("[CartSniper] Cart items did not appear within timeout.");
+    lastCartSignature = null;
     setState(State.IDLE);
     return;
   }
 
-  if (state !== State.WAITING) return;
+  if (state !== State.WAITING || runId !== runVersion) return;
 
-  const barcodes = extractBarcodes(); // also populates domQuantities + domNames
-  if (barcodes.length === 0) {
+  const snapshot = collectCartSnapshot();
+  applyCartSnapshot(snapshot);
+  lastCartSignature = snapshot.signature;
+
+  if (snapshot.barcodes.length === 0) {
     setState(State.IDLE);
     return;
   }
@@ -749,13 +1153,22 @@ async function run() {
   showLoadingWidget();
 
   try {
-    const data = await fetchComparison(chain.chain_code, barcodes, domQuantities);
-    if (state !== State.LOADING) return;
+    const data = await fetchComparison(chain.chain_code, snapshot.barcodes, snapshot.quantities);
+    if (runId !== runVersion || state !== State.LOADING) return;
+
+    const latestSnapshot = collectCartSnapshot({ log: false });
+    if (latestSnapshot.signature !== snapshot.signature) {
+      lastCartSignature = latestSnapshot.signature;
+      scheduleRun();
+      return;
+    }
+
+    applyCartSnapshot(latestSnapshot);
     showResultWidget(data);
     setState(State.SHOWN);
   } catch (err) {
     console.error("[CartSniper] API call failed:", err);
-    if (state !== State.LOADING) return;
+    if (runId !== runVersion || state !== State.LOADING) return;
     showErrorWidget("שגיאה בטעינת הנתונים. האם השרת פועל?");
     setState(State.IDLE);
   }
@@ -764,12 +1177,38 @@ async function run() {
 // ─── SPA navigation detection ─────────────────────────────────────────────────
 
 let debounceTimer = null;
+let cartCheckTimer = null;
 
 function scheduleRun() {
+  runVersion += 1;
   setState(State.IDLE);
   removeWidget();
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(run, 300);
+}
+
+function scheduleCartCheck() {
+  if (state === State.DISMISSED) return;
+
+  clearTimeout(cartCheckTimer);
+  cartCheckTimer = setTimeout(() => {
+    if (state === State.DISMISSED || !isCartPage()) return;
+
+    if (!cartItemsPresent()) {
+      if (lastCartSignature !== null) {
+        lastCartSignature = null;
+        scheduleRun();
+      }
+      return;
+    }
+
+    const snapshot = collectCartSnapshot({ log: false });
+    if (snapshot.signature !== lastCartSignature) {
+      lastCartSignature = snapshot.signature;
+      scheduleRun();
+      return;
+    }
+  }, 300);
 }
 
 (function patchHistory() {
@@ -787,13 +1226,11 @@ const observer = new MutationObserver(() => {
   const currentUrl = window.location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
+    lastCartSignature = null;
     scheduleRun();
     return;
   }
-  if (state === State.IDLE && isCartPage() && cartItemsPresent()) {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(run, 300);
-  }
+  scheduleCartCheck();
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
