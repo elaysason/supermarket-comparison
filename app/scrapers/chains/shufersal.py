@@ -29,15 +29,11 @@ class ShufersalScraper(CommonXMLScraper):
             chain_code="7290027600007",
             base_url="https://prices.shufersal.co.il",
         )
-
-    def _file_type_to_category(self, file_type: FileType) -> Optional[int]:
-        """Maps a FileType to the corresponding Shufersal API category."""
-        mapping = {
+        self._category_mapping = {
             FileType.PRICE_FULL: ShufersalCategory.PRICES_FULL,
             FileType.PRICE_DELTA: ShufersalCategory.PRICES,
             FileType.STORES: ShufersalCategory.STORES,
         }
-        return mapping.get(file_type)
 
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
         """

@@ -2,6 +2,7 @@ import logging
 
 from app.db.repository import SupabaseRepository
 from app.scrapers.base import FileType
+from app.scrapers.chains.hazi_hinam import HaziHinamScraper
 from app.scrapers.chains.rami_levi import RamiLeviScraper
 from app.scrapers.chains.shufersal import ShufersalScraper
 from app.scrapers.chains.yohananof import YohananofScraper
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     scrapers = [
+        HaziHinamScraper(),
         YohananofScraper(),
         RamiLeviScraper(),
         ShufersalScraper(),

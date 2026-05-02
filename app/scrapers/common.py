@@ -71,7 +71,12 @@ class CommonXMLScraper(BaseScraper):
         self._base_url = base_url
         self._online_store_id: Optional[str] = default_store_id
         self._cached_file_url: Optional[str] = None
+        self._category_mapping: Dict[FileType, int] = {}
         self._session = self._create_session()
+
+    def _file_type_to_category(self, file_type: FileType) -> Optional[int]:
+        """Maps a FileType to the corresponding chain-specific API category."""
+        return self._category_mapping.get(file_type)
 
     @staticmethod
     def _create_session(verify: bool = True) -> requests.Session:
