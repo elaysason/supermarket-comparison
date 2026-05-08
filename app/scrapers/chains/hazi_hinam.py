@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from app.scrapers.base import FileType
+from app.scrapers.base import FileType, PriceUpdateStrategy
 from app.scrapers.common import CommonXMLScraper
 from bs4 import BeautifulSoup
 from datetime import date
@@ -33,6 +33,11 @@ class HaziHinamScraper(CommonXMLScraper):
             FileType.STORES: HaziHinamCategory.STORES,
         }
         self._session = self._create_session(verify=False)
+
+    @property
+    def price_update_strategy(self) -> PriceUpdateStrategy:
+        # Hazi Hinam's portal exposes only full price files (no delta endpoint).
+        return PriceUpdateStrategy.FULL_ONLY
 
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
         category = self._file_type_to_category(file_type)

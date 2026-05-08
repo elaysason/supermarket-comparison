@@ -11,6 +11,11 @@ class FileType(Enum):
     STORES = "Stores"
 
 
+class PriceUpdateStrategy(str, Enum):
+    FULL_ONLY = "full_only"
+    DELTA_WITH_FULL_FALLBACK = "delta_with_full_fallback"
+
+
 class BaseScraper(ABC):
     """Abstract base class for supermarket scrapers."""
 
@@ -28,6 +33,10 @@ class BaseScraper(ABC):
     @abstractmethod
     def chain_code(self) -> str:
         pass
+
+    @property
+    def price_update_strategy(self) -> PriceUpdateStrategy:
+        return PriceUpdateStrategy.DELTA_WITH_FULL_FALLBACK
 
     @property
     def item_tag_name(self) -> str:

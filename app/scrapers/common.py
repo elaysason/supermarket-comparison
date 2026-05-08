@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Set
 
 import requests
 from lxml import etree as ET
+from pydantic import ValidationError
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -47,6 +48,19 @@ def parse_xml_date(date_str: str) -> datetime:
     return datetime.now()
 
 
+def _safe_float(value: Optional[str], default: Optional[float] = None) -> Optional[float]:
+    """Convert XML text to float, returning ``default`` for empty/invalid input."""
+    if value is None:
+        return default
+    value = value.strip()
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
 def _get_valid_tags(file_path: str) -> Set[str]:
     """Determine valid XML tags based on file path patterns."""
     path_lower = file_path.lower()
@@ -72,6 +86,7 @@ class CommonXMLScraper(BaseScraper):
         self._online_store_id: Optional[str] = default_store_id
         self._cached_file_url: Optional[str] = None
         self._category_mapping: Dict[FileType, int] = {}
+        self.last_parse_skipped: int = 0
         self._session = self._create_session()
 
     def _file_type_to_category(self, file_type: FileType) -> Optional[int]:
@@ -117,6 +132,8 @@ class CommonXMLScraper(BaseScraper):
             return
 
         items_found = 0
+        items_skipped = 0
+        self.last_parse_skipped = 0
 
         try:
             for event, elem in context:
@@ -126,26 +143,46 @@ class CommonXMLScraper(BaseScraper):
                         if processed_item:
                             items_found += 1
                             yield processed_item
+                        else:
+                            items_skipped += 1
 
                 except Exception as e:
+                    items_skipped += 1
                     logger.error("Error processing element %s: %s", elem.tag, e)
                     continue
 
         except ET.ParseError:
             logger.error("XML Parse Error in %s", file_path, exc_info=True)
 
+        logger.info(
+            "Finished parse for %s: %d items, %d skipped",
+            file_path,
+            items_found,
+            items_skipped,
+        )
+        self.last_parse_skipped = items_skipped
+
     def _process_single_item(self, elem: ET.Element) -> Optional[Dict[str, Any]]:
         """
         Takes a single XML element, extracts the required fields,
         and builds Pydantic Product and Price objects.
         """
+        barcode = findtext_multi(elem, "ItemCode")
+        price_value = _safe_float(findtext_multi(elem, "Price", "ItemPrice"))
+        if price_value is None:
+            # Source rows with no price are not actionable; skip silently.
+            logger.debug("Skipping item with missing/invalid price (barcode=%r)", barcode)
+            return None
+
         try:
             product_data = {
-                "barcode": findtext_multi(elem, "ItemCode"),
+                "barcode": barcode,
                 # The product name might be under different tags in different chains
                 "product_name": findtext_multi(elem, "ItemName", "ItemNm"),
                 "unit_name": findtext_multi(elem, "UnitMeasure", "UnitOfMeasure"),
-                "total_quantity": float(findtext_multi(elem, "Quantity", default="0")),
+                "total_quantity": _safe_float(
+                    findtext_multi(elem, "Quantity"), default=0.0
+                ),
                 "manufacturer_name": findtext_multi(
                     elem, "ManufactureName", "ManufacturerName"
                 ),
@@ -153,8 +190,8 @@ class CommonXMLScraper(BaseScraper):
             price_data = {
                 "chain_code": self._chain_code,
                 "store_code": self._online_store_id,
-                "barcode": product_data["barcode"],
-                "price": float(findtext_multi(elem, "Price", "ItemPrice")),
+                "barcode": barcode,
+                "price": price_value,
                 "update_date": parse_xml_date(findtext_multi(elem, "PriceUpdateDate")),
             }
             product_model = ProductModel(**product_data)
@@ -165,8 +202,13 @@ class CommonXMLScraper(BaseScraper):
             price_model = PriceModel(**price_data)
             return {"product": product_model, "price": price_model}
 
+        except ValidationError as e:
+            # Source data quality issues (bad barcode, missing fields, etc.) are
+            # noisy but expected. Keep them out of ERROR-level logs.
+            logger.debug("Skipping invalid item (barcode=%r): %s", barcode, e)
+            return None
         except Exception as e:
-            logger.error("Error processing item: %s", e)
+            logger.error("Error processing item (barcode=%r): %s", barcode, e)
             return None
 
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:

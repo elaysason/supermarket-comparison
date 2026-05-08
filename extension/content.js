@@ -28,6 +28,7 @@ const CHAINS = {
     chain_code: "7290803800003",
     chain_name: "יוחננוף",
   },
+
 };
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -519,6 +520,7 @@ const HEBREW_CHAIN_NAMES = {
   Shufersal: "שופרסל",
   "Rami Levi": "רמי לוי",
   Yohananof: "יוחננוף",
+  "Hazi Hinam": "חצי חינם",
 };
 
 function toDisplayChainName(name) {

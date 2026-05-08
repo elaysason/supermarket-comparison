@@ -1,7 +1,9 @@
+import argparse
 import logging
+import os
 
 from app.db.repository import SupabaseRepository
-from app.scrapers.base import FileType
+from app.scrapers.base import FileType, PriceUpdateStrategy
 from app.scrapers.chains.hazi_hinam import HaziHinamScraper
 from app.scrapers.chains.rami_levi import RamiLeviScraper
 from app.scrapers.chains.shufersal import ShufersalScraper
@@ -10,7 +12,7 @@ from app.scrapers.chains.yohananof import YohananofScraper
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main(force_full: bool = False):
     scrapers = [
         HaziHinamScraper(),
         YohananofScraper(),
@@ -47,48 +49,93 @@ def main():
             logger.error("No online store set. Skipping %s.", scraper.chain_name)
             continue
 
-        # 2. Determine file type: use delta if full prices already loaded
-        if repo.has_prices_for_store(scraper.chain_code, scraper.online_store):
-            file_type = FileType.PRICE_DELTA
+        # 2. Determine file type / fallback behavior
+        price_files_to_try = []
+        if force_full:
+            price_files_to_try = [FileType.PRICE_FULL]
             logger.info(
-                "Full prices already exist. Using delta price file for updates."
+                "force_full enabled. Downloading full price file for %s.",
+                scraper.chain_name,
             )
+        elif scraper.price_update_strategy == PriceUpdateStrategy.FULL_ONLY:
+            price_files_to_try = [FileType.PRICE_FULL]
+            logger.info("Using full price file strategy for %s.", scraper.chain_name)
+        elif (
+            scraper.price_update_strategy
+            == PriceUpdateStrategy.DELTA_WITH_FULL_FALLBACK
+        ):
+            if repo.has_prices_for_store(scraper.chain_code, scraper.online_store):
+                price_files_to_try = [FileType.PRICE_DELTA, FileType.PRICE_FULL]
+                logger.info(
+                    "Existing prices found. Trying delta price file with full fallback."
+                )
+            else:
+                price_files_to_try = [FileType.PRICE_FULL]
+                logger.info("No existing prices found. Downloading full price file.")
         else:
-            file_type = FileType.PRICE_FULL
-            logger.info("No existing prices found. Downloading full price file.")
+            price_files_to_try = [FileType.PRICE_FULL]
+            logger.info(
+                "Unknown price update strategy for %s. Falling back to full price file.",
+                scraper.chain_name,
+            )
 
-        # 3. Download the latest price file
-        latest_file_url = scraper.get_latest_file_url(file_type)
-
-        if latest_file_url:
-            logger.info("Latest file URL: %s", latest_file_url)
-            file_path = scraper.download_latest(file_type)
-
+        # 3. Download the latest usable price file
+        file_path = None
+        selected_file_type = None
+        for candidate_file_type in price_files_to_try:
+            file_path = scraper.download_latest(candidate_file_type)
             if file_path:
-                # 4. Parse the XML and insert prices into DB
-                logger.info("Parsing file: %s", file_path)
+                selected_file_type = candidate_file_type
+                logger.info(
+                    "Using %s file: %s", candidate_file_type.value, file_path
+                )
+                break
 
-                products = []
-                prices = []
+            logger.warning(
+                "No usable %s file for %s.",
+                candidate_file_type.value,
+                scraper.chain_name,
+            )
+            scraper._cached_file_url = None
 
-                for item in scraper.parse(file_path):
-                    if item:
-                        if "product" in item:
-                            products.append(item["product"])
-                        if "price" in item:
-                            prices.append(item["price"])
+        if file_path and selected_file_type is not None:
+            # 4. Parse the XML and insert prices into DB
+            logger.info("Parsing %s file: %s", selected_file_type.value, file_path)
 
-                # 5. Upsert products first (prices FK depends on products)
-                repo.upsert_products(products)
-                repo.upsert_prices(prices)
-                summary.append((scraper.chain_name, len(products)))
+            products = []
+            prices = []
+
+            for item in scraper.parse(file_path):
+                if item:
+                    if "product" in item:
+                        products.append(item["product"])
+                    if "price" in item:
+                        prices.append(item["price"])
+
+            # 5. Upsert products first (prices FK depends on products)
+            repo.upsert_products(products)
+            repo.upsert_prices(prices)
+            skipped = getattr(scraper, "last_parse_skipped", 0)
+            summary.append((scraper.chain_name, len(products), skipped))
         else:
-            logger.warning("No latest file URL found for %s.", scraper.chain_name)
+            logger.warning("No usable price file found for %s.", scraper.chain_name)
 
     print("\n=== Scraping Summary ===")
-    for name, count in summary:
-        print(f"  {name:<12}  {count} items upserted")
+    for name, count, skipped in summary:
+        print(f"  {name:<12}  {count} items upserted, {skipped} skipped")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run supermarket price scrapers.")
+    parser.add_argument(
+        "--force-full",
+        action="store_true",
+        default=os.getenv("FORCE_FULL", "").lower() in ("1", "true", "yes"),
+        help=(
+            "Force a full price file download for every chain, ignoring the "
+            "scraper's price_update_strategy. Can also be enabled via "
+            "FORCE_FULL=1 env var."
+        ),
+    )
+    args = parser.parse_args()
+    main(force_full=args.force_full)
