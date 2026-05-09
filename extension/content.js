@@ -28,6 +28,10 @@ const CHAINS = {
     chain_code: "7290803800003",
     chain_name: "יוחננוף",
   },
+  "hazi-hinam.co.il": {
+    chain_code: "7290700100008",
+    chain_name: "חצי חינם",
+  },
 
 };
 
@@ -92,9 +96,25 @@ function isYochananofCartView() {
   return openPopups.has("cart") || document.querySelectorAll('[data-aria-desc="cart_item"]').length > 0;
 }
 
+function isHaziHinamCartView() {
+  if (!window.location.hostname.includes("hazi-hinam.co.il")) return false;
+  if (window.location.pathname.toLowerCase().startsWith("/checkout/cart")) return true;
+
+  const drawer = document.querySelector("app-my-cart");
+  if (!drawer) return false;
+  const rows = drawer.querySelectorAll("app-product-strip-new");
+  return Array.from(rows).some((row) => {
+    const rect = row.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+}
+
 function isCartPage() {
   if (window.location.hostname.includes("yochananof.co.il")) {
     return isYochananofCartView();
+  }
+  if (window.location.hostname.includes("hazi-hinam.co.il")) {
+    return isHaziHinamCartView();
   }
 
   const url = (window.location.pathname + window.location.hash + window.location.search).toLowerCase();
@@ -363,6 +383,26 @@ function collectCartSnapshot({ log = true } = {}) {
           break;
         }
       }
+    });
+  }
+
+  // Strategy 2b (Hazi Hinam): scope to checkout-cart or my-cart wrapper to
+  // exclude category recommendations (app-product-cube-new outside cart).
+  // EAN sits in the Cloudinary image URL: /Production/<EAN>/<EAN>_P...jpg
+  if (hostname.includes("hazi-hinam.co.il") && barcodes.size === 0) {
+    const cartScopes = document.querySelectorAll("app-checkout-cart, app-my-cart");
+    cartScopes.forEach((scope) => {
+      scope.querySelectorAll("app-product-strip-new").forEach((row) => {
+        const images = row.querySelectorAll("img[src]");
+        for (const img of images) {
+          const src = img.getAttribute("src") || "";
+          const match = src.match(/\/Production\/(\d{7,14})\//);
+          if (match) {
+            register(match[1], row);
+            break;
+          }
+        }
+      });
     });
   }
 
@@ -655,7 +695,31 @@ function getUnavailablePrimaryDisplay(chain, optionType) {
   };
 }
 
+function makeUnavailableSourceChain(activeChain) {
+  return {
+    chain_code: activeChain.chain_code,
+    chain_name: activeChain.chain_name,
+    items_total: 0,
+    order_total: null,
+    matched_count: 0,
+    shipping: [],
+    _unavailable_reason: "no_prices",
+  };
+}
+
 function getChainDisplayModel(chain, optionType, isSource = false, matchedCount = 0, totalCount = 0) {
+  // Active chain has no price data at all — render a minimal "no data" row
+  // with the agreed reason text. No total, no badge, no shipping breakdown.
+  if (chain._unavailable_reason === "no_prices") {
+    return {
+      isUnavailable: true,
+      label: "",
+      total: null,
+      supportingText: "לא נמצאו מחירים תואמים לפריטים שנבחרו",
+      badgeText: null,
+    };
+  }
+
   const isUnavailable = chain.order_total == null;
   const modeLabel = getComparisonModeLabel(optionType);
   const primaryLabel = `סה"כ ${modeLabel}`;
@@ -916,7 +980,17 @@ function showResultWidget(data) {
     chains = [],
   } = data;
 
-  if (!cheapest_chain && chains.length === 0) {
+  // Always present the active chain in the widget. When the API returns no
+  // source data (chain has no matching prices in our DB), synthesize a stub
+  // row that displays the agreed reason text, so the user never sees a
+  // recommendation without seeing where their current chain stands.
+  const activeChain = getCurrentChain();
+  const effectiveSourceChain =
+    source_chain || (activeChain ? makeUnavailableSourceChain(activeChain) : null);
+  const sourceIsUnavailable =
+    effectiveSourceChain?._unavailable_reason === "no_prices";
+
+  if (!cheapest_chain && chains.length === 0 && !effectiveSourceChain) {
     w.innerHTML = `
       <div class="cs-header">
         <span class="cs-logo">סל קל</span>
@@ -928,15 +1002,17 @@ function showResultWidget(data) {
       </div>
     `;
   } else {
-    const lowestItemsChain = getLowestItemsChain(source_chain, chains);
+    const lowestItemsChain = getLowestItemsChain(effectiveSourceChain, chains);
     const lowestOrderableChain = chains.length > 0
       ? [...chains]
         .filter((chain) => chain.order_total != null)
         .sort((a, b) => a.order_total - b.order_total)[0] || null
       : null;
-    const cheapestOverallChain = getCheapestOverallChain(source_chain, chains);
+    const cheapestOverallChain = sourceIsUnavailable
+      ? null
+      : getCheapestOverallChain(effectiveSourceChain, chains);
     const summaryHtml = cheapestOverallChain
-      ? getSummaryMarkup(lowestItemsChain, cheapestOverallChain, cheapest_chain, source_chain, comparison_option_type, matched_count, total_count)
+      ? getSummaryMarkup(lowestItemsChain, cheapestOverallChain, cheapest_chain, effectiveSourceChain, comparison_option_type, matched_count, total_count)
       : getUnavailableSummaryMarkup(lowestItemsChain, comparison_option_type, matched_count, total_count);
 
     function renderChainRow(chain, options = {}) {
@@ -966,27 +1042,31 @@ function showResultWidget(data) {
         ? `<div class="cs-chain-supporting">${supportingText}</div>`
         : "";
 
+      const totalWrapHtml = displayModel.total != null
+        ? `
+            <div class="cs-chain-total-wrap">
+              <span class="cs-chain-total-label">${displayModel.label}</span>
+              <span class="cs-chain-total">${formatCurrencyHtml(displayModel.total)}</span>
+            </div>`
+        : "";
+
       return `
         <div class="${rowClass}">
           <div class="cs-chain-top">
             <div class="cs-chain-heading">
               <span class="cs-chain-name">${escapeHtml(toDisplayChainName(chain.chain_name))}</span>
               ${badgesHtml}
-            </div>
-            <div class="cs-chain-total-wrap">
-              <span class="cs-chain-total-label">${displayModel.label}</span>
-              <span class="cs-chain-total">${formatCurrencyHtml(displayModel.total)}</span>
-            </div>
+            </div>${totalWrapHtml}
           </div>
           ${supportingHtml}
         </div>`;
     }
 
     // ── Source chain row (current store, shown above competitors) ──────────
-    const sourceRowHtml = source_chain
-      ? renderChainRow(source_chain, {
+    const sourceRowHtml = effectiveSourceChain
+      ? renderChainRow(effectiveSourceChain, {
         isSource: true,
-        isOverallCheapest: cheapestOverallChain?.chain_code === source_chain.chain_code,
+        isOverallCheapest: cheapestOverallChain?.chain_code === effectiveSourceChain.chain_code,
       })
       : "";
 
@@ -1060,8 +1140,8 @@ function showResultWidget(data) {
       <div class="cs-body">
         ${summaryHtml}
         ${sourceRowHtml ? `<div class="cs-section-label">העגלה שלך</div><div class="cs-chains">${sourceRowHtml}</div>` : ""}
-        <div class="cs-section-label">רשתות להשוואה</div>
-        <div class="cs-chains">${chainRowsHtml}</div>
+        ${chains.length > 0 ? `<div class="cs-section-label">רשתות להשוואה</div>
+        <div class="cs-chains">${chainRowsHtml}</div>` : ""}
         ${items.length > 0 ? `
         <details class="cs-details">
           <summary class="cs-details-toggle">${detailsLabel}</summary>

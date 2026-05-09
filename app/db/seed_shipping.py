@@ -45,8 +45,11 @@ CREATE TABLE IF NOT EXISTS shipping_costs (
 SEED_DATA = [
     # Shufersal — delivery flat ₪30, no free threshold
     (
-        "7290027600007", "delivery",
-        30.0, None, None,
+        "7290027600007",
+        "delivery",
+        30.0,
+        None,
+        None,
         "משלוח עד הבית ₪30",
     ),
     # Shufersal — pickup ₪15 under ₪750, ₪10 at ₪750+
@@ -54,26 +57,38 @@ SEED_DATA = [
     # free_above=None because it never drops to zero, just to ₪10.
     # We encode the ₪750 threshold in notes and handle the two-tier logic in code.
     (
-        "7290027600007", "pickup",
-        15.0, None, None,
+        "7290027600007",
+        "pickup",
+        15.0,
+        None,
+        None,
         "איסוף עצמי ₪15 (מתחת ₪750) / ₪10 (₪750+)",
     ),
-    # Rami Levi — delivery ₪30, no pickup, no free threshold
+    # Rami Levi — delivery ₪35.9, no pickup, no free threshold
     (
-        "7290058140886", "delivery",
-        30.0, None, None,
-        "משלוח עד הבית ₪30",
+        "7290058140886",
+        "delivery",
+        35.9,
+        None,
+        None,
+        "משלוח עד הבית ₪35.9",
     ),
     # Yohananof — pickup only, ₪15 under ₪1000, free at ₪1000+, min order ₪250
     (
-        "7290803800003", "pickup",
-        15.0, 1000.0, 250.0,
+        "7290803800003",
+        "pickup",
+        15.0,
+        1000.0,
+        250.0,
         "איסוף עצמי ₪15 (עד ₪1000) / חינם (₪1000+), מינימום הזמנה ₪250",
     ),
     # Hazi Hinam — delivery ₪29, min order ₪500
     (
-        "7290700100008", "delivery",
-        29.0, None, 500.0,
+        "7290700100008",
+        "delivery",
+        29.0,
+        None,
+        500.0,
         "משלוח עד הבית ₪29, מינימום הזמנה ₪500",
     ),
 ]

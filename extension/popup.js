@@ -9,6 +9,7 @@ const SUPPORTED_DOMAINS = [
   "shufersal.co.il",
   "rami-levy.co.il",
   "yochananof.co.il",
+  "hazi-hinam.co.il",
 ];
 
 const CART_PATTERN = /cart|checkout|basket|dashboard|order|עגלה|קופה/i;
@@ -17,6 +18,7 @@ const CHAIN_NAMES = {
   "shufersal.co.il": "שופרסל",
   "rami-levy.co.il": "רמי לוי",
   "yochananof.co.il": "יוחננוף",
+  "hazi-hinam.co.il": "חצי חינם",
 };
 
 async function init() {
@@ -63,7 +65,7 @@ async function init() {
         statusText: "לא פעיל באתר זה",
         statusTone: "לא נתמך",
         siteLabel: hostname,
-        statusDescription: "סל קל פועל רק בעגלות הקניות של שופרסל, רמי לוי ויוחננוף.",
+        statusDescription: "סל קל פועל רק בעגלות הקניות של שופרסל, רמי לוי, יוחננוף וחצי חינם.",
       });
       return;
     }

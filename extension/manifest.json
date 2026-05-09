@@ -10,6 +10,7 @@
     "*://*.shufersal.co.il/*",
     "*://*.rami-levy.co.il/*",
     "*://*.yochananof.co.il/*",
+    "*://*.hazi-hinam.co.il/*",
     "http://127.0.0.1:8000/*",
     "http://127.0.0.1:8001/*"
   ],
@@ -18,7 +19,8 @@
       "matches": [
         "*://*.shufersal.co.il/*",
         "*://*.rami-levy.co.il/*",
-        "*://*.yochananof.co.il/*"
+        "*://*.yochananof.co.il/*",
+        "*://*.hazi-hinam.co.il/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],
