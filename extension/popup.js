@@ -21,7 +21,23 @@ const CHAIN_NAMES = {
   "hazi-hinam.co.il": "חצי חינם",
 };
 
+function renderSupportedChains(activeDomain) {
+  const ul = document.getElementById("store-list");
+  if (!ul) return;
+  ul.innerHTML = SUPPORTED_DOMAINS.map((domain) => {
+    const name = CHAIN_NAMES[domain] || domain;
+    const isActive = domain === activeDomain;
+    const status = isActive ? "פעיל" : "נתמך";
+    const itemClass = isActive ? "store-item store-item-active" : "store-item";
+    return `<li class="${itemClass}"><span class="store-name">${name}</span><span class="store-status">${status}</span></li>`;
+  }).join("");
+}
+
 async function init() {
+  // Render the supported-chains list immediately so it stays populated even if
+  // the tab query below throws.
+  renderSupportedChains(null);
+
   const card = document.getElementById("status-card");
   const dot = document.getElementById("status-dot");
   const text = document.getElementById("status-text");
@@ -57,6 +73,10 @@ async function init() {
     const hostname = url.hostname;
 
     const matchedDomain = SUPPORTED_DOMAINS.find((d) => hostname.includes(d));
+
+    // Re-render the supported list now that we know the active chain so we can
+    // mark it פעיל.
+    renderSupportedChains(matchedDomain);
 
     if (!matchedDomain) {
       setStatus({

@@ -204,6 +204,11 @@
       color: #94a3b8;
       font-size: 12px;
     }
+
+    .store-item-active .store-status {
+      color: #fbbf24;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -226,11 +231,7 @@
 
     <section class="support-card">
       <div class="section-title">רשתות נתמכות</div>
-      <ul class="store-list">
-        <li class="store-item"><span class="store-name">שופרסל</span><span class="store-status">נתמך</span></li>
-        <li class="store-item"><span class="store-name">רמי לוי</span><span class="store-status">נתמך</span></li>
-        <li class="store-item"><span class="store-name">יוחננוף</span><span class="store-status">נתמך</span></li>
-      </ul>
+      <ul id="store-list" class="store-list"></ul>
       <p class="hint-text">כשתגיע לעגלת הקניות באתר נתמך, ההשוואה תרוץ אוטומטית מתוך העמוד.</p>
     </section>
   </main>
