@@ -30,14 +30,35 @@
       border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     }
 
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-copy {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
     .header-title {
       font-weight: 700;
       font-size: 14px;
+      line-height: 1.2;
       color: #f8fafc;
     }
 
+    .header-logo {
+      display: block;
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
     .header-subtitle {
-      margin-top: 4px;
+      margin-top: 2px;
       font-size: 12px;
       line-height: 1.5;
       color: #94a3b8;
@@ -211,10 +232,15 @@
     }
   </style>
 </head>
-<body>
+  <body>
   <header>
-    <div class="header-title">סל קל</div>
-    <div class="header-subtitle">השוואת סל בעמודי עגלה נתמכים</div>
+    <div class="header-brand">
+      <img class="header-logo" src="icons/sal_kal_v1-cropped.png" alt="סל קל" />
+      <div class="header-copy">
+        <div class="header-title">סל קל</div>
+        <div class="header-subtitle">השוואת סל בעמודי עגלה נתמכים</div>
+      </div>
+    </div>
   </header>
   <main>
     <section id="status-card" class="status-card" data-state="checking">

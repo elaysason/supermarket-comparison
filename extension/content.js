@@ -526,7 +526,7 @@ function showLoadingWidget() {
   w.id = WIDGET_ID;
   w.className = "cart-sniper-widget cart-sniper-loading";
   w.innerHTML = `
-    <div class="cs-header"><span class="cs-logo">סל קל</span></div>
+    <div class="cs-header">${getLogoMarkup()}</div>
     <div class="cs-body">
       <div class="cs-loading-shell">
         <span class="cs-spinner"></span>
@@ -562,6 +562,10 @@ const HEBREW_CHAIN_NAMES = {
   Yohananof: "יוחננוף",
   "Hazi Hinam": "חצי חינם",
 };
+
+function getLogoMarkup() {
+  return `<img class="cs-logo" src="${chrome.runtime.getURL("icons/sal_kal_v1-cropped.png")}" alt="סל קל">`;
+}
 
 function toDisplayChainName(name) {
   return HEBREW_CHAIN_NAMES[name] || name;
@@ -993,7 +997,7 @@ function showResultWidget(data) {
   if (!cheapest_chain && chains.length === 0 && !effectiveSourceChain) {
     w.innerHTML = `
       <div class="cs-header">
-        <span class="cs-logo">סל קל</span>
+        ${getLogoMarkup()}
         <button class="cs-close" aria-label="סגור">&times;</button>
       </div>
       <div class="cs-body cs-nomatch">
@@ -1133,7 +1137,7 @@ function showResultWidget(data) {
 
     w.innerHTML = `
       <div class="cs-header">
-        <span class="cs-logo">סל קל</span>
+        ${getLogoMarkup()}
         ${comparisonScopeShortText ? `<span class="cs-header-scope">${comparisonScopeShortText}</span>` : ""}
         <button class="cs-close" aria-label="סגור">&times;</button>
       </div>
@@ -1165,7 +1169,7 @@ function showErrorWidget(message) {
   w.className = "cart-sniper-widget cs-error-widget";
   w.innerHTML = `
     <div class="cs-header">
-      <span class="cs-logo">סל קל</span>
+      ${getLogoMarkup()}
       <button class="cs-close" aria-label="סגור">&times;</button>
     </div>
     <div class="cs-body cs-error">
