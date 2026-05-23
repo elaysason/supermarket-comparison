@@ -4,6 +4,7 @@ import os
 
 from app.db.repository import SupabaseRepository
 from app.scrapers.base import FileType, PriceUpdateStrategy
+from app.scrapers.chains.carrefour import CarrefourScraper
 from app.scrapers.chains.hazi_hinam import HaziHinamScraper
 from app.scrapers.chains.rami_levi import RamiLeviScraper
 from app.scrapers.chains.shufersal import ShufersalScraper
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 def main(force_full: bool = False):
     scrapers = [
+        CarrefourScraper(),
         HaziHinamScraper(),
         YohananofScraper(),
         RamiLeviScraper(),
@@ -86,9 +88,7 @@ def main(force_full: bool = False):
             file_path = scraper.download_latest(candidate_file_type)
             if file_path:
                 selected_file_type = candidate_file_type
-                logger.info(
-                    "Using %s file: %s", candidate_file_type.value, file_path
-                )
+                logger.info("Using %s file: %s", candidate_file_type.value, file_path)
                 break
 
             logger.warning(

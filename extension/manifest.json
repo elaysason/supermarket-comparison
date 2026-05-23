@@ -43,5 +43,16 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/sal_kal_v1-cropped.png"],
+      "matches": [
+        "*://*.shufersal.co.il/*",
+        "*://*.rami-levy.co.il/*",
+        "*://*.yochananof.co.il/*",
+        "*://*.hazi-hinam.co.il/*"
+      ]
+    }
+  ]
 }

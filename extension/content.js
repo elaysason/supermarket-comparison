@@ -683,6 +683,18 @@ function getComparisonScopeShortText(matchedCount, totalCount) {
 }
 
 function getUnavailablePrimaryDisplay(chain, optionType) {
+  // When the primary option (e.g. delivery) has a minimum order gap, always
+  // show the cart total with the gap — even if an alternate option (e.g.
+  // pickup) is available.  This keeps the display consistent across all
+  // chains that can't meet the delivery minimum.
+  const selectedOption = chain.shipping.find((option) => option.option_type === optionType);
+  if (selectedOption && getOptionGapText(chain, selectedOption)) {
+    return {
+      label: "סל ההשוואה",
+      total: chain.items_total,
+    };
+  }
+
   const alternateInfo = getAlternateOptionInfo(chain, optionType);
 
   if (alternateInfo?.total != null) {
@@ -783,6 +795,16 @@ function getRowSupportingText(chain, optionType, matchedCount = 0, totalCount = 
   const alternateInfo = getAlternateOptionInfo(chain, optionType);
   const selectedModeLabel = getComparisonModeLabel(optionType);
 
+  // When the primary option has a minimum order gap, show its breakdown
+  // consistently — even if an alternate option is available.  This keeps
+  // Carrefour (delivery + pickup) looking the same as Hazi Hinam
+  // (delivery only) when both are below the delivery minimum.
+  if (selectedOption && getOptionGapText(chain, selectedOption)) {
+    parts.push(`סל ${formatCurrencyHtml(chain.items_total)} + ${modeLabel} ${selectedOption.fee === 0 ? "חינם" : formatCurrencyHtml(selectedOption.fee)}`);
+    parts.push(getOptionGapText(chain, selectedOption));
+    return parts.join(" · ");
+  }
+
   if (alternateInfo?.total != null) {
     const alternateModeLabel = getComparisonModeLabel(alternateInfo.option.option_type);
     parts.push(`סל ${formatCurrencyHtml(chain.items_total)} + ${alternateModeLabel} ${alternateInfo.option.fee === 0 ? "חינם" : formatCurrencyHtml(alternateInfo.option.fee)}`);
@@ -825,13 +847,19 @@ function getAlternateModeNote(chain, optionType) {
 function getUnavailableBadgeText(chain, optionType) {
   if (!optionType) return "לא זמין להזמנה";
 
+  // Prioritize showing the minimum-order gap for the primary option (e.g.
+  // delivery) so all chains below the minimum look the same, regardless of
+  // whether an alternate option like pickup exists.
+  const selectedOption = chain.shipping.find((option) => option.option_type === optionType);
+  if (selectedOption && getOptionGapText(chain, selectedOption)) {
+    return getOptionGapBadgeText(chain, selectedOption) || "מינימום לא הושג";
+  }
+
   const alternateInfo = getAlternateOptionInfo(chain, optionType);
   if (alternateInfo?.gapText) return getOptionGapBadgeText(chain, alternateInfo.option) || "מינימום לא הושג";
   if (alternateInfo?.total != null && !alternateInfo.option.unavailable) return `${getComparisonModeLabel(alternateInfo.option.option_type)} בלבד`;
 
-  const selectedOption = chain.shipping.find((option) => option.option_type === optionType);
   if (!selectedOption) return `אין ${getComparisonModeLabel(optionType)}`;
-  if (getOptionGapText(chain, selectedOption)) return getOptionGapBadgeText(chain, selectedOption) || "מינימום לא הושג";
   return `לא זמין ב${getComparisonModeLabel(optionType)}`;
 }
 

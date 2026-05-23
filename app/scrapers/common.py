@@ -137,22 +137,34 @@ class CommonXMLScraper(BaseScraper):
 
         try:
             for event, elem in context:
+                if elem.tag not in VALID_TAGS:
+                    continue
                 try:
-                    if elem.tag in VALID_TAGS:
-                        processed_item = self._process_single_item(elem)
-                        if processed_item:
-                            items_found += 1
-                            yield processed_item
-                        else:
-                            items_skipped += 1
-
+                    processed_item = self._process_single_item(elem)
+                    if processed_item:
+                        items_found += 1
+                        yield processed_item
+                    else:
+                        items_skipped += 1
                 except Exception as e:
                     items_skipped += 1
                     logger.error("Error processing element %s: %s", elem.tag, e)
-                    continue
+                finally:
+                    # Free memory: clear the processed element and drop
+                    # preceding siblings to keep memory bounded.
+                    elem.clear()
+                    parent = elem.getparent()
+                    if parent is not None:
+                        while elem.getprevious() is not None:
+                            del parent[0]
 
-        except ET.ParseError:
-            logger.error("XML Parse Error in %s", file_path, exc_info=True)
+        except (ET.XMLSyntaxError, ET.LxmlError):
+            logger.error(
+                "XML parse error in %s after %d items. File may be truncated.",
+                file_path,
+                items_found,
+                exc_info=True,
+            )
 
         logger.info(
             "Finished parse for %s: %d items, %d skipped",
@@ -246,13 +258,14 @@ class CommonXMLScraper(BaseScraper):
             logger.warning("No URL available to download")
             return False
 
+        tmp_path = f"{file_path}.tmp"
+        success = False
         try:
             response = self._session.get(
                 self._cached_file_url, stream=True, timeout=120
             )
             response.raise_for_status()
 
-            tmp_path = f"{file_path}.tmp"
             with open(tmp_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
@@ -294,6 +307,7 @@ class CommonXMLScraper(BaseScraper):
             if tmp_path:
                 os.remove(tmp_path)
             logger.info("Downloaded and extracted to %s", file_path)
+            success = True
             return True
 
         except requests.RequestException as e:
@@ -302,6 +316,16 @@ class CommonXMLScraper(BaseScraper):
         except Exception as e:
             logger.error("Error processing file: %s", e)
             return False
+        finally:
+            if not success:
+                # Clean up temp file and any partially-written output so a
+                # subsequent run does not mistake them for valid cached files.
+                for path in (tmp_path, file_path):
+                    try:
+                        if path and os.path.exists(path):
+                            os.remove(path)
+                    except OSError:
+                        pass
 
     def download_latest(
         self,
