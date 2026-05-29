@@ -43,6 +43,10 @@ class BaseScraper(ABC):
         """Override this if the XML structure uses a different tag for items."""
         return "Product"
 
+    def reset_file_cache(self) -> None:
+        """Clear any cached file lookup state."""
+        pass
+
     @abstractmethod
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
         """returns the latest file URL for the given file type.

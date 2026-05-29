@@ -4,23 +4,13 @@ import os
 
 from app.db.repository import SupabaseRepository
 from app.scrapers.base import FileType, PriceUpdateStrategy
-from app.scrapers.chains.carrefour import CarrefourScraper
-from app.scrapers.chains.hazi_hinam import HaziHinamScraper
-from app.scrapers.chains.rami_levi import RamiLeviScraper
-from app.scrapers.chains.shufersal import ShufersalScraper
-from app.scrapers.chains.yohananof import YohananofScraper
+from app.scrapers.registry import get_scrapers
 
 logger = logging.getLogger(__name__)
 
 
 def main(force_full: bool = False):
-    scrapers = [
-        CarrefourScraper(),
-        HaziHinamScraper(),
-        YohananofScraper(),
-        RamiLeviScraper(),
-        ShufersalScraper(),
-    ]
+    scrapers = get_scrapers()
 
     repo = SupabaseRepository()
     summary = []
@@ -45,7 +35,7 @@ def main(force_full: bool = False):
                 logger.warning("No online store found in stores file.")
         else:
             logger.info("No stores file available. Using existing online store.")
-        scraper._cached_file_url = None
+        scraper.reset_file_cache()
 
         if not scraper.online_store:
             logger.error("No online store set. Skipping %s.", scraper.chain_name)
@@ -77,7 +67,8 @@ def main(force_full: bool = False):
         else:
             price_files_to_try = [FileType.PRICE_FULL]
             logger.info(
-                "Unknown price update strategy for %s. Falling back to full price file.",
+                "Unknown price update strategy for %s. Falling back to "
+                "full price file.",
                 scraper.chain_name,
             )
 
@@ -96,7 +87,7 @@ def main(force_full: bool = False):
                 candidate_file_type.value,
                 scraper.chain_name,
             )
-            scraper._cached_file_url = None
+            scraper.reset_file_cache()
 
         if file_path and selected_file_type is not None:
             # 4. Parse the XML and insert prices into DB

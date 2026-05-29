@@ -48,7 +48,9 @@ def parse_xml_date(date_str: str) -> datetime:
     return datetime.now()
 
 
-def _safe_float(value: Optional[str], default: Optional[float] = None) -> Optional[float]:
+def _safe_float(
+    value: Optional[str], default: Optional[float] = None
+) -> Optional[float]:
     """Convert XML text to float, returning ``default`` for empty/invalid input."""
     if value is None:
         return default
@@ -108,6 +110,9 @@ class CommonXMLScraper(BaseScraper):
         session.mount("http://", adapter)
         session.verify = verify
         return session
+
+    def reset_file_cache(self) -> None:
+        self._cached_file_url = None
 
     @property
     def chain_name(self) -> str:
@@ -183,7 +188,9 @@ class CommonXMLScraper(BaseScraper):
         price_value = _safe_float(findtext_multi(elem, "Price", "ItemPrice"))
         if price_value is None:
             # Source rows with no price are not actionable; skip silently.
-            logger.debug("Skipping item with missing/invalid price (barcode=%r)", barcode)
+            logger.debug(
+                "Skipping item with missing/invalid price (barcode=%r)", barcode
+            )
             return None
 
         try:
