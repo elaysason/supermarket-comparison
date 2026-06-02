@@ -2,8 +2,9 @@
   "manifest_version": 3,
   "name": "סל קל",
   "version": "1.0",
-  "description": "Compares supermarket cart prices instantly against competitor chains.",
+  "description": "משווה את סל הקניות שלך בין רשתות נתמכות ומראה איפה משתלם יותר להזמין.",
   "permissions": [
+    "activeTab",
     "storage"
   ],
   "host_permissions": [

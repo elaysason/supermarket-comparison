@@ -19,14 +19,16 @@
       font-size: 13px;
       line-height: 1.5;
       color: #e5e7eb;
-      background: #0b1220;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.18), transparent 34%),
+        linear-gradient(160deg, #07111d 0%, #0b1220 52%, #111827 100%);
       width: 320px;
-      min-height: 220px;
+      min-height: 270px;
     }
 
     header {
       padding: 16px 16px 12px;
-      background: #111827;
+      background: rgba(17, 24, 39, 0.72);
       border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     }
 
@@ -75,11 +77,12 @@
     .support-card {
       border: 1px solid rgba(51, 65, 85, 0.85);
       border-radius: 12px;
-      background: #0f172a;
+      background: rgba(15, 23, 42, 0.92);
       box-shadow: 0 8px 18px rgba(2, 6, 23, 0.16);
     }
 
     .status-card {
+      overflow: hidden;
       padding: 14px;
     }
 
@@ -186,6 +189,60 @@
       color: #94a3b8;
     }
 
+    .status-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .status-actions[hidden] {
+      display: none;
+    }
+
+    .action-button {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 9px 11px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      cursor: pointer;
+      transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
+    }
+
+    .action-button:focus-visible {
+      outline: 2px solid rgba(251, 191, 36, 0.85);
+      outline-offset: 2px;
+    }
+
+    .action-button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .action-button:disabled {
+      cursor: default;
+      opacity: 0.62;
+    }
+
+    .primary-action {
+      flex: 1;
+      color: #111827;
+      background: linear-gradient(180deg, #fcd34d, #f59e0b);
+      box-shadow: 0 10px 20px rgba(245, 158, 11, 0.18);
+    }
+
+    .secondary-action {
+      color: #e2e8f0;
+      background: rgba(15, 23, 42, 0.65);
+      border-color: rgba(148, 163, 184, 0.22);
+    }
+
+    .secondary-action[hidden] {
+      display: none;
+    }
+
     .section-title {
       margin-bottom: 10px;
       color: #cbd5e1;
@@ -216,6 +273,27 @@
       border-top: none;
     }
 
+    .store-button {
+      appearance: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 12px;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-family: inherit;
+      text-align: inherit;
+      cursor: pointer;
+    }
+
+    .store-button:focus-visible {
+      outline: 2px solid rgba(251, 191, 36, 0.75);
+      outline-offset: 4px;
+      border-radius: 8px;
+    }
+
     .store-name {
       color: #e2e8f0;
       font-size: 12px;
@@ -230,6 +308,16 @@
       color: #fbbf24;
       font-weight: 600;
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      .action-button {
+        transition: none;
+      }
+
+      .action-button:hover:not(:disabled) {
+        transform: none;
+      }
+    }
   </style>
 </head>
   <body>
@@ -243,7 +331,7 @@
     </div>
   </header>
   <main>
-    <section id="status-card" class="status-card" data-state="checking">
+    <section id="status-card" class="status-card" data-state="checking" role="status" aria-live="polite">
       <div class="status-row">
         <div id="status-badge">
           <span id="status-dot" class="dot-supported"></span>
@@ -253,6 +341,10 @@
       </div>
       <div id="site-label"></div>
       <p id="status-description">פותח את הלשונית הפעילה ובודק אם מדובר בדף עגלה נתמך.</p>
+      <div class="status-actions">
+        <button id="primary-action" class="action-button primary-action" type="button" disabled>בודק...</button>
+        <button id="secondary-action" class="action-button secondary-action" type="button" hidden></button>
+      </div>
     </section>
 
     <section class="support-card">
