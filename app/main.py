@@ -41,6 +41,24 @@ def main(force_full: bool = False):
             logger.error("No online store set. Skipping %s.", scraper.chain_name)
             continue
 
+        compare_store_code = repo.get_compare_store_code(scraper.chain_code)
+        if not compare_store_code:
+            logger.error(
+                "No compare store configured for %s (%s). Skipping.",
+                scraper.chain_name,
+                scraper.chain_code,
+            )
+            continue
+
+        if compare_store_code != scraper.online_store:
+            logger.error(
+                "Online store %s for %s does not match compare store %s. Skipping.",
+                scraper.online_store,
+                scraper.chain_name,
+                compare_store_code,
+            )
+            continue
+
         # 2. Determine file type / fallback behavior
         price_files_to_try = []
         if force_full:
