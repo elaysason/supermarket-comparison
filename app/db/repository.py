@@ -36,6 +36,23 @@ class SupabaseRepository:
         for i in range(0, len(data), chunk_size):
             yield data[i : i + chunk_size]
 
+    def get_compare_store_code(self, chain_code: str) -> str | None:
+        """Return the store currently used for chain-level comparison."""
+        query = """
+            SELECT store_code
+            FROM chain_compare_stores
+            WHERE chain_code = %s
+        """
+        try:
+            with _pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (chain_code,))
+                    row = cur.fetchone()
+                    return row[0] if row else None
+        except Exception as e:
+            logger.error("Error fetching compare store for chain %s: %s", chain_code, e)
+            raise
+
     def has_prices_for_store(self, chain_code: str, store_code: str) -> bool:
         """Check if prices already exist for a specific chain and store."""
         query = """
@@ -149,7 +166,7 @@ class SupabaseRepository:
             raise
 
     def upsert_prices(self, prices: List[PriceModel]):
-        """Executes a bulk UPSERT using the composite natural key (chain_code, store_code, barcode)."""
+        """Bulk upsert prices using the composite natural key."""
         if not prices:
             logger.info("No prices to insert. Skipping.")
             return
@@ -245,12 +262,14 @@ class SupabaseRepository:
                             {
                                 "option_type": option_type,
                                 "fee": float(fee),
-                                "free_above": float(free_above)
-                                if free_above is not None
-                                else None,
-                                "min_order": float(min_order)
-                                if min_order is not None
-                                else None,
+                                "free_above": (
+                                    float(free_above)
+                                    if free_above is not None
+                                    else None
+                                ),
+                                "min_order": (
+                                    float(min_order) if min_order is not None else None
+                                ),
                                 "notes": notes,
                             }
                         )
@@ -294,7 +313,8 @@ class SupabaseRepository:
                     "matched_count": int,
                 }
             }
-        Returns {} if no prices are found.
+        Prices are scoped to the DB-selected compare store for the source chain.
+        Returns {} if no compare store or prices are found.
         """
         if not barcodes:
             return {}
@@ -308,6 +328,9 @@ class SupabaseRepository:
                 p.price
             FROM prices p
             JOIN chains c ON c.chain_code = p.chain_code
+            JOIN chain_compare_stores ccs
+              ON ccs.chain_code = p.chain_code
+             AND ccs.store_code = p.store_code
             LEFT JOIN products pr ON pr.barcode = p.barcode
             WHERE p.chain_code = %s
               AND p.barcode = ANY(%s)
@@ -335,6 +358,7 @@ class SupabaseRepository:
 
         except Exception as e:
             logger.error("Error fetching source prices: %s", e)
+            raise
 
         return results
 
@@ -343,7 +367,9 @@ class SupabaseRepository:
     ) -> Dict[str, Any]:
         """
         For a list of barcodes, find the total price at every chain EXCEPT
-        the source chain. Returns a dict keyed by chain_code.
+        the source chain. Each chain is scoped to one DB-selected compare
+        store so we do not mix multiple sub-chains under the same chain entry.
+        Returns a dict keyed by chain_code.
 
         Each entry contains:
           - chain_name: str
@@ -351,8 +377,7 @@ class SupabaseRepository:
           - matched_count: int
           - items: dict[barcode -> {"product_name": str|None, "price": float}]
 
-        Only the first price seen per (chain, barcode) pair is used to avoid
-        double-counting when multiple stores exist for a chain.
+        Only the first price seen per (chain, barcode) pair is used.
         """
         if not barcodes:
             return {}
@@ -366,6 +391,9 @@ class SupabaseRepository:
                 p.price
             FROM prices p
             JOIN chains c ON c.chain_code = p.chain_code
+            JOIN chain_compare_stores ccs
+              ON ccs.chain_code = p.chain_code
+             AND ccs.store_code = p.store_code
             LEFT JOIN products pr ON pr.barcode = p.barcode
             WHERE p.chain_code != %s
               AND p.barcode = ANY(%s)
@@ -409,5 +437,6 @@ class SupabaseRepository:
 
         except Exception as e:
             logger.error("Error fetching competitor prices: %s", e)
+            raise
 
         return results
