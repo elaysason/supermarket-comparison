@@ -2,16 +2,12 @@
  * Cart Sniper — background.js (Service Worker)
  *
  * Acts as a fetch proxy for the content script.
- * Content scripts injected into HTTPS pages cannot call http://127.0.0.1
- * due to mixed-content restrictions. Background service workers are exempt
- * from this rule, so we relay the API call through here.
  */
 
 const API_BASES = [
-  "http://127.0.0.1:8001",
-  "http://127.0.0.1:8000",
+  "https://supermarket-comparison-649951889970.europe-west1.run.app",
 ];
-const REQUEST_TIMEOUT_MS = 12000;
+const REQUEST_TIMEOUT_MS = 30000;
 
 function withTimeoutFetch(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -25,8 +21,10 @@ async function compareCart(payload) {
   let lastError = null;
 
   for (const base of API_BASES) {
+    const url = `${base}/api/compare`;
     try {
-      const response = await withTimeoutFetch(`${base}/api/compare`, {
+      console.log("[CartSniper] Calling API:", url);
+      const response = await withTimeoutFetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -41,6 +39,7 @@ async function compareCart(payload) {
 
       return await response.json();
     } catch (error) {
+      console.error("[CartSniper] API request failed:", url, error);
       lastError = error;
       const isTimeout = error?.name === "AbortError";
       const isNetworkFailure = /failed to fetch|networkerror|connection/i.test(
@@ -67,19 +66,35 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type !== "COMPARE_CART") return false;
+  if (!message || message.type !== "COMPARE_CART") return false;
 
-  compareCart({
-    source_chain_code: message.source_chain_code,
-    barcodes: message.barcodes,
-    quantities: message.quantities || {},
-  })
-    .then((data) => sendResponse({ ok: true, data }))
-    .catch((err) => sendResponse({
+  let didRespond = false;
+  const respond = (payload) => {
+    if (didRespond) return;
+    didRespond = true;
+    sendResponse(payload);
+  };
+
+  try {
+    compareCart({
+      source_chain_code: message.source_chain_code,
+      barcodes: message.barcodes || [],
+      quantities: message.quantities || {},
+    })
+      .then((data) => respond({ ok: true, data }))
+      .catch((err) =>
+        respond({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
+  } catch (err) {
+    respond({
       ok: false,
       error: err instanceof Error ? err.message : String(err),
-    }));
+    });
+  }
 
-  // Return true to keep the message channel open for the async response
+  // Return true to keep the message channel open for the async response.
   return true;
 });

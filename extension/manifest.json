@@ -12,8 +12,7 @@
     "*://*.rami-levy.co.il/*",
     "*://*.yochananof.co.il/*",
     "*://*.hazi-hinam.co.il/*",
-    "http://127.0.0.1:8000/*",
-    "http://127.0.0.1:8001/*"
+    "https://supermarket-comparison-649951889970.europe-west1.run.app/*"
   ],
   "content_scripts": [
     {

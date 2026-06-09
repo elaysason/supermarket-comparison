@@ -1216,11 +1216,22 @@ function showErrorWidget(message) {
 
 async function fetchComparison(chainCode, barcodes, quantities) {
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Extension background request timed out."));
+    }, 35000);
+
     chrome.runtime.sendMessage(
       { type: "COMPARE_CART", source_chain_code: chainCode, barcodes, quantities },
       (response) => {
-        if (chrome.runtime.lastError) { reject(new Error(chrome.runtime.lastError.message)); return; }
-        if (!response?.ok) { reject(new Error(response?.error || "Unknown error from background")); return; }
+        clearTimeout(timeout);
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!response?.ok) {
+          reject(new Error(response?.error || "Unknown error from background"));
+          return;
+        }
         resolve(response.data);
       }
     );
@@ -1283,7 +1294,11 @@ async function run() {
   } catch (err) {
     console.error("[CartSniper] API call failed:", err);
     if (runId !== runVersion || state !== State.LOADING) return;
-    showErrorWidget("שגיאה בטעינת הנתונים. האם השרת פועל?");
+    showErrorWidget(
+      err instanceof Error
+        ? err.message
+        : "שגיאה בטעינת הנתונים. נסו שוב בעוד רגע."
+    );
     setState(State.IDLE);
   }
 }
