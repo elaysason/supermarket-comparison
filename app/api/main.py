@@ -31,7 +31,10 @@ ALLOWED_ORIGIN_RE = re.compile(
 
 app = FastAPI(
     title="Cart Sniper API",
-    description="Compares a supermarket cart against competitor chains using exact barcode matching.",
+    description=(
+        "Compares a supermarket cart against competitor chains using exact "
+        "barcode matching."
+    ),
     version="1.0.0",
 )
 
@@ -90,7 +93,9 @@ def _calc_shipping_fee(option: dict, cart_total: float) -> tuple[float, bool]:
     return base_fee, False
 
 
-def _best_available_order_total(items_total: float, options: list[ShippingOption]) -> float | None:
+def _best_available_order_total(
+    items_total: float, options: list[ShippingOption]
+) -> float | None:
     if not options:
         return items_total
 
@@ -114,7 +119,9 @@ def _select_comparison_option_type(
 
     supported_by_any_competitor = set()
     for chain in competitor_results:
-        supported_by_any_competitor |= {option.option_type for option in chain["shipping"]}
+        supported_by_any_competitor |= {
+            option.option_type for option in chain["shipping"]
+        }
 
     common_option_types = source_option_types & supported_by_any_competitor
     if not common_option_types:
@@ -290,8 +297,12 @@ def compare_cart(
     # Keep the source chain's supported fulfillment modes available even when we
     # do not have trustworthy source prices, so competitor-only comparison can
     # still choose the right mode (for example Yohananof pickup).
-    source_shipping = make_shipping(request.source_chain_code, src_total if src else 0.0)
-    comparison_option_type = _select_comparison_option_type(source_shipping, competitor_totals)
+    source_shipping = make_shipping(
+        request.source_chain_code, src_total if src else 0.0
+    )
+    comparison_option_type = _select_comparison_option_type(
+        source_shipping, competitor_totals
+    )
 
     # Build competitor ChainResults using the selected common fulfillment mode
     chain_results: list[ChainResult] = []
@@ -354,7 +365,9 @@ def compare_cart(
                 items.append(
                     ItemResult(
                         barcode=barcode,
-                        product_name=entry["product_name"] or product_names.get(barcode),
+                        product_name=(
+                            entry["product_name"] or product_names.get(barcode)
+                        ),
                         quantity=q,
                         unit_price=unit,
                         competitor_price=round(unit * q, 2),

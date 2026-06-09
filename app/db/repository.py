@@ -12,17 +12,35 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
+def _env_any(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
+
 def _build_conninfo() -> str:
-    user = os.getenv("user")
-    password = os.getenv("password")
-    host = os.getenv("host")
-    port = os.getenv("port")
-    dbname = os.getenv("dbname")
+    database_url = _env_any("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    user = _env_any("PGUSER", "POSTGRES_USER", "user")
+    password = _env_any("PGPASSWORD", "POSTGRES_PASSWORD", "password")
+    host = _env_any("PGHOST", "POSTGRES_HOST", "host")
+    port = _env_any("PGPORT", "POSTGRES_PORT", "port")
+    dbname = _env_any("PGDATABASE", "POSTGRES_DB", "dbname")
+    sslmode = _env_any("PGSSLMODE", "DB_SSLMODE") or "require"
+
     if not all([user, password, host, port, dbname]):
         raise ValueError(
-            "Fatal: Missing one or more database environment variables in .env"
+            "Fatal: set DATABASE_URL or all database env vars: "
+            "PGUSER/PGPASSWORD/PGHOST/PGPORT/PGDATABASE"
         )
-    return f"user={user} password={password} host={host} port={port} dbname={dbname}"
+    return (
+        f"user={user} password={password} host={host} port={port} "
+        f"dbname={dbname} sslmode={sslmode}"
+    )
 
 
 _pool = ConnectionPool(_build_conninfo(), min_size=1, max_size=5)

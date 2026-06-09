@@ -66,7 +66,10 @@ class HaziHinamScraper(CommonXMLScraper):
             cells = [el.text.strip() for el in row.find_all("td")]
             if cells:
                 row_dict = dict(zip(headers, cells))
-                if file_type == FileType.STORES or row_dict.get("קוד חנות") == self._online_store_id:
+                if (
+                    file_type == FileType.STORES
+                    or row_dict.get("קוד חנות") == self._online_store_id
+                ):
                     file_name = row_dict.get("קובץ")
                     if file_name:
                         url = self.base_download_url + file_name

@@ -60,14 +60,23 @@ class CarrefourScraper(CommonXMLScraper):
             for _, elem in context:
                 if elem.tag not in ("Store", "STORE"):
                     continue
-                stype = findtext_multi(elem, "STORETYPE", "StoreType", default="").strip()
+                stype = findtext_multi(
+                    elem, "STORETYPE", "StoreType", default=""
+                ).strip()
                 if stype != store_type:
                     continue
 
-                store_id = findtext_multi(elem, "STOREID", "StoreId", "StoreID", default="").strip()
-                store_name = findtext_multi(elem, "STORENAME", "StoreName", default="").strip()
+                store_id = findtext_multi(
+                    elem, "STOREID", "StoreId", "StoreID", default=""
+                ).strip()
+                store_name = findtext_multi(
+                    elem, "STORENAME", "StoreName", default=""
+                ).strip()
 
-                if store_id == self._EXPECTED_STORE_ID and self._EXPECTED_STORE_NAME_MARKER in store_name:
+                if (
+                    store_id == self._EXPECTED_STORE_ID
+                    and self._EXPECTED_STORE_NAME_MARKER in store_name
+                ):
                     self._online_store_id = store_id
                     logger.info(
                         "Found expected online store %s (%s)",
@@ -203,8 +212,11 @@ class CarrefourScraper(CommonXMLScraper):
         if self._cached_file_url:
             return self._cached_file_url
 
-        logger.info("Fetching latest %s file URL for store %s...",
-                     file_type.value, self._online_store_id)
+        logger.info(
+            "Fetching latest %s file URL for store %s...",
+            file_type.value,
+            self._online_store_id,
+        )
 
         try:
             today = date.today().strftime("%Y%m%d")
@@ -215,7 +227,9 @@ class CarrefourScraper(CommonXMLScraper):
 
             # Stores files use branch code "000" (chain-wide), so don't
             # filter them by the individual store code.
-            store_filter = None if file_type == FileType.STORES else self._online_store_id
+            store_filter = (
+                None if file_type == FileType.STORES else self._online_store_id
+            )
             filtered = self._filter_files(
                 files,
                 file_type,

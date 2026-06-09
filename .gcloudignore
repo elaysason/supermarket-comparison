@@ -1,0 +1,12 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.xml
+chains_downloads/
+.git/
+.vscode/
+.kilocode/
+opencode.json

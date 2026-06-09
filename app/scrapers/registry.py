@@ -5,7 +5,6 @@ from app.scrapers.chains.rami_levi import RamiLeviScraper
 from app.scrapers.chains.shufersal import ShufersalScraper
 from app.scrapers.chains.yohananof import YohananofScraper
 
-
 SCRAPER_CLASSES: tuple[type[BaseScraper], ...] = (
     CarrefourScraper,
     HaziHinamScraper,

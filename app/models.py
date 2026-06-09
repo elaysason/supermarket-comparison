@@ -82,7 +82,7 @@ def extract_normalized_quantity(
     if any(k in xml_unit for k in ["kg", "קג", "קילו", 'ק"ג']):
         return xml_qty * 1000, Unit.GRAM
 
-    if any(l in xml_unit for l in ["liter", "ליטר"]):
+    if any(unit_name in xml_unit for unit_name in ["liter", "ליטר"]):
         return xml_qty * 1000, Unit.ML
 
     return xml_qty, xml_unit

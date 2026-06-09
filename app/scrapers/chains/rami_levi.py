@@ -77,7 +77,7 @@ class RamiLeviScraper(CommonXMLScraper):
         return True
 
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
-        """Fetches the latest file URL for the online store using the Rami Levi background API."""
+        """Fetches the latest file URL using the Rami Levi background API."""
         if not self._authenticate():
             logger.error("Authentication failed. Cannot fetch file URL.")
             return None
@@ -111,7 +111,11 @@ class RamiLeviScraper(CommonXMLScraper):
         result = resp.json()
         total = int(result.get("iTotalDisplayRecords", 0))
         if total == 0:
-            logger.warning("No %s files found for store %s.", file_type.value, self._online_store_id)
+            logger.warning(
+                "No %s files found for store %s.",
+                file_type.value,
+                self._online_store_id,
+            )
             return None
 
         # 2. Fetch last entry (server returns oldest-first, so last = newest)

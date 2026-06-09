@@ -94,7 +94,10 @@ class YohananofScraper(CommonXMLScraper):
         logger.debug("Cookies: %s", dict(self._session.cookies))
 
         search = f"{file_type.value}{self.chain_code}"
-        if file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA) and self._online_store_id:
+        if (
+            file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA)
+            and self._online_store_id
+        ):
             # Yohananof exposes unrelated store files and special aggregate-like
             # filenames (for example 7999 / 000-007). Only an exact online-store
             # filename is safe to ingest for the source store.
@@ -112,9 +115,13 @@ class YohananofScraper(CommonXMLScraper):
         result = resp.json()
         total = int(result.get("iTotalDisplayRecords", 0))
         if total == 0:
-            if file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA) and self._online_store_id:
+            if (
+                file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA)
+                and self._online_store_id
+            ):
                 logger.warning(
-                    "No %s files found for online store %s. Refusing to fall back to non-store-specific Yohananof files.",
+                    "No %s files found for online store %s. Refusing to fall "
+                    "back to non-store-specific Yohananof files.",
                     file_type.value,
                     self._online_store_id,
                 )
@@ -136,9 +143,13 @@ class YohananofScraper(CommonXMLScraper):
         result = resp.json()
         files = result.get("aaData", [])
         if not files:
-            if file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA) and self._online_store_id:
+            if (
+                file_type in (FileType.PRICE_FULL, FileType.PRICE_DELTA)
+                and self._online_store_id
+            ):
                 logger.warning(
-                    "No %s files found for online store %s. Refusing to fall back to non-store-specific Yohananof files.",
+                    "No %s files found for online store %s. Refusing to fall "
+                    "back to non-store-specific Yohananof files.",
                     file_type.value,
                     self._online_store_id,
                 )
