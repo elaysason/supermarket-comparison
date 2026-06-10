@@ -1,0 +1,61 @@
+name: Scrape Prices
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: "Run a full scrape instead of the default update strategy"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  scrape:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, salkal-scraper]
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up uv
+        # astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run scraper
+        shell: pwsh
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FORCE_FULL: ${{ inputs.force_full && '1' || '' }}
+        run: |
+          New-Item -ItemType Directory -Force -Path "logs" | Out-Null
+          $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+          $logPath = "logs/scraper-$timestamp.log"
+          "Scraper started at $(Get-Date -Format o)" | Tee-Object -FilePath $logPath
+          if ($env:FORCE_FULL -eq "1") {
+            uv run python -m app.main --force-full 2>&1 | Tee-Object -FilePath $logPath -Append
+          } else {
+            uv run python -m app.main 2>&1 | Tee-Object -FilePath $logPath -Append
+          }
+          $exitCode = $LASTEXITCODE
+          "Scraper finished at $(Get-Date -Format o) with exit code $exitCode" | Tee-Object -FilePath $logPath -Append
+          if ($exitCode -ne 0) {
+            exit $exitCode
+          }
+
+      - name: Upload scraper logs
+        if: always()
+        # actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scraper-logs-${{ github.run_id }}
+          path: logs/*.log
+          if-no-files-found: ignore
+          retention-days: 14
