@@ -93,10 +93,12 @@ class RamiLeviScraper(CommonXMLScraper):
         logger.debug("File page CSRF: %s...", file_csrf[:15])
         logger.debug("Cookies: %s", dict(self._session.cookies))
 
-        # Search by file type + chain code. Narrow further by online store code
-        # so we don't accidentally pick up a file from a different store.
         search = f"{file_type.value}{self.chain_code}"
-        if self._online_store_id:
+        if file_type == FileType.STORES:
+            search += "-000-"
+        elif self._online_store_id:
+            # Stores files are chain-wide (branch 000); branch-specific files
+            # must be scoped so we do not ingest another store.
             search += f"-{self._online_store_id}-"
 
         api_url = f"{self._base_url}/file/json/dir"
@@ -111,11 +113,14 @@ class RamiLeviScraper(CommonXMLScraper):
         result = resp.json()
         total = int(result.get("iTotalDisplayRecords", 0))
         if total == 0:
-            logger.warning(
-                "No %s files found for store %s.",
-                file_type.value,
-                self._online_store_id,
-            )
+            if file_type != FileType.STORES:
+                logger.warning(
+                    "No %s files found for store %s.",
+                    file_type.value,
+                    self._online_store_id,
+                )
+            else:
+                logger.warning("No %s files found.", file_type.value)
             return None
 
         # 2. Fetch last entry (server returns oldest-first, so last = newest)
