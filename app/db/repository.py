@@ -20,6 +20,21 @@ def _env_any(*names: str) -> str | None:
     return None
 
 
+def _positive_int_env(name: str) -> int | None:
+    value = os.getenv(name)
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r", name, value)
+        return None
+    if parsed <= 0:
+        logger.warning("Ignoring invalid %s=%r", name, value)
+        return None
+    return parsed
+
+
 def _build_conninfo() -> str:
     database_url = _env_any("DATABASE_URL")
     if database_url:
@@ -43,7 +58,19 @@ def _build_conninfo() -> str:
     )
 
 
-_pool = ConnectionPool(_build_conninfo(), min_size=1, max_size=5)
+def _connection_kwargs() -> dict[str, str]:
+    timeout_ms = _positive_int_env("DATABASE_STATEMENT_TIMEOUT_MS")
+    if timeout_ms is None:
+        return {}
+    return {"options": f"-c statement_timeout={timeout_ms}"}
+
+
+_pool = ConnectionPool(
+    _build_conninfo(),
+    min_size=1,
+    max_size=5,
+    kwargs=_connection_kwargs(),
+)
 
 
 class SupabaseRepository:

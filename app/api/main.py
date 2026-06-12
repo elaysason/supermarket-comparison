@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 
 from dotenv import load_dotenv
@@ -20,13 +21,44 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Allowed origins: Chrome extension origins and localhost for development.
-# In production, replace the regex with your specific extension ID:
-#   r"^chrome-extension://YOUR_EXTENSION_ID_HERE$"
-ALLOWED_ORIGIN_RE = re.compile(
-    r"^chrome-extension://[a-z]{32}$"
-    r"|^https?://127\.0\.0\.1(:\d+)?$"
-    r"|^https?://localhost(:\d+)?$"
+
+def _env_list(name: str) -> list[str]:
+    return [
+        value.strip().rstrip("/")
+        for value in os.getenv(name, "").split(",")
+        if value.strip()
+    ]
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using %d", name, value, default)
+        return default
+    if parsed <= 0:
+        logger.warning("Invalid %s=%r; using %d", name, value, default)
+        return default
+    return parsed
+
+
+ALLOWED_EXTENSION_ORIGINS = set(_env_list("ALLOWED_EXTENSION_ORIGINS"))
+ALLOWED_LOCAL_ORIGINS = os.getenv("ALLOW_LOCAL_ORIGINS", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+LOCAL_ORIGIN_RE = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$")
+MAX_COMPARE_BARCODES = _positive_int_env("MAX_COMPARE_BARCODES", 100)
+MAX_BARCODE_LENGTH = _positive_int_env("MAX_BARCODE_LENGTH", 64)
+MAX_ITEM_QUANTITY = _positive_int_env("MAX_ITEM_QUANTITY", 99)
+
+allowed_cors_origins = list(ALLOWED_EXTENSION_ORIGINS)
+allowed_cors_regex = (
+    r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$" if ALLOWED_LOCAL_ORIGINS else None
 )
 
 app = FastAPI(
@@ -40,7 +72,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"chrome-extension://.*|https?://127\.0\.0\.1(:\d+)?|https?://localhost(:\d+)?",
+    allow_origins=allowed_cors_origins,
+    allow_origin_regex=allowed_cors_regex,
     allow_credentials=False,
     allow_methods=["POST", "OPTIONS"],
     allow_headers=["Content-Type"],
@@ -57,12 +90,16 @@ def _verify_origin(request: Request) -> None:
     extension (the key was always extractable from the package).
     """
     origin = request.headers.get("origin") or request.headers.get("Origin") or ""
-    if not ALLOWED_ORIGIN_RE.match(origin):
-        logger.warning("Rejected request from origin: %s", origin)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Forbidden: unrecognised origin.",
-        )
+    if origin in ALLOWED_EXTENSION_ORIGINS:
+        return
+    if ALLOWED_LOCAL_ORIGINS and LOCAL_ORIGIN_RE.match(origin):
+        return
+
+    logger.warning("Rejected request from origin: %s", origin)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Forbidden: unrecognised origin.",
+    )
 
 
 def _calc_shipping_fee(option: dict, cart_total: float) -> tuple[float, bool]:
@@ -154,6 +191,27 @@ def compare_cart(
     raw_request: Request,
 ) -> CompareResponse:
     _verify_origin(raw_request)
+
+    if len(request.barcodes) > MAX_COMPARE_BARCODES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Too many barcodes. Maximum is {MAX_COMPARE_BARCODES}.",
+        )
+    if len(request.quantities) > MAX_COMPARE_BARCODES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Too many quantity entries. Maximum is {MAX_COMPARE_BARCODES}.",
+        )
+    if any(len(barcode) > MAX_BARCODE_LENGTH for barcode in request.barcodes):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Barcode length must be at most {MAX_BARCODE_LENGTH} characters.",
+        )
+    if any(quantity > MAX_ITEM_QUANTITY for quantity in request.quantities.values()):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Item quantity must be at most {MAX_ITEM_QUANTITY}.",
+        )
 
     if not request.barcodes:
         return CompareResponse(
