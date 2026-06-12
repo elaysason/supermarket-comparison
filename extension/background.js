@@ -5,7 +5,7 @@
  */
 
 const API_BASES = [
-  "https://supermarket-comparison-649951889970.europe-west1.run.app",
+  "https://supermarket-comparison-api-649951889970.europe-west1.run.app",
 ];
 const REQUEST_TIMEOUT_MS = 30000;
 

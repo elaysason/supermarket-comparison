@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "סל קל",
-  "version": "1.0",
+  "version": "1.0.1",
   "description": "משווה את סל הקניות שלך בין רשתות נתמכות ומראה איפה משתלם יותר להזמין.",
   "permissions": [
     "activeTab",
@@ -12,7 +12,7 @@
     "*://*.rami-levy.co.il/*",
     "*://*.yochananof.co.il/*",
     "*://*.hazi-hinam.co.il/*",
-    "https://supermarket-comparison-649951889970.europe-west1.run.app/*"
+    "https://supermarket-comparison-api-649951889970.europe-west1.run.app/*"
   ],
   "content_scripts": [
     {
