@@ -69,7 +69,7 @@ jobs:
             --min-instances 0 \
             --max-instances 3 \
             --concurrency 3 \
-            --set-env-vars "^|^ALLOWED_EXTENSION_ORIGINS=${{ vars.ALLOWED_EXTENSION_ORIGINS }}|MAX_COMPARE_BARCODES=100|MAX_BARCODE_LENGTH=64|MAX_ITEM_QUANTITY=99|DATABASE_POOL_MIN_SIZE=1|DATABASE_POOL_MAX_SIZE=3|DATABASE_STATEMENT_TIMEOUT_MS=10000" \
+            --set-env-vars "^|^ALLOWED_EXTENSION_ORIGINS=${{ vars.ALLOWED_EXTENSION_ORIGINS }}|MAX_COMPARE_BARCODES=100|MAX_BARCODE_LENGTH=64|MAX_ITEM_QUANTITY=99|DATABASE_POOL_MIN_SIZE=1|DATABASE_POOL_MAX_SIZE=3|DATABASE_STATEMENT_TIMEOUT_MS=10000|READY_CACHE_SECONDS=30" \
             --update-secrets "DATABASE_URL=${{ vars.DATABASE_URL_SECRET_NAME }}:latest" \
             --quiet
 
@@ -79,4 +79,4 @@ jobs:
             --project "${{ vars.GCP_PROJECT_ID }}" \
             --region "${{ vars.GCP_REGION }}" \
             --format 'value(status.url)')
-          curl --fail --show-error --silent "$SERVICE_URL/health"
+          curl --fail --show-error --silent --max-time 10 "$SERVICE_URL/ready"
