@@ -1,8 +1,13 @@
 name: Scrape Prices
 
+concurrency:
+  group: scrape-prices
+  cancel-in-progress: false
+
 on:
   schedule:
-    - cron: "0 1 * * *"
+    - cron: "0 1,13 * * *"
+    - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       force_full:
@@ -34,12 +39,23 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FORCE_FULL: ${{ inputs.force_full && '1' || '' }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           New-Item -ItemType Directory -Force -Path "logs" | Out-Null
           $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
           $logPath = "logs/scraper-$timestamp.log"
           "Scraper started at $(Get-Date -Format o)" | Tee-Object -FilePath $logPath
-          if ($env:FORCE_FULL -eq "1") {
+
+          $scheduledFullCheck = $env:GITHUB_EVENT_NAME -eq "schedule" -and $env:SCHEDULE -eq "0 2 * * *"
+          $epochDays = [int][Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 86400)
+          $scheduledFull = $scheduledFullCheck -and ($epochDays % 2 -eq 0)
+
+          if ($scheduledFullCheck -and -not $scheduledFull) {
+            "Skipping full scrape on off day." | Tee-Object -FilePath $logPath -Append
+            exit 0
+          }
+
+          if ($env:FORCE_FULL -eq "1" -or $scheduledFull) {
             uv run python -m app.main --force-full 2>&1 | Tee-Object -FilePath $logPath -Append
           } else {
             uv run python -m app.main 2>&1 | Tee-Object -FilePath $logPath -Append

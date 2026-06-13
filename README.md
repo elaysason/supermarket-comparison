@@ -140,7 +140,8 @@ The workflow is defined in `.github/workflows/scrape-prices.yml`.
 
 It supports:
 
-- Daily scheduled scraping at `01:00 UTC`.
+- Scheduled delta scraping at `01:00 UTC` and `13:00 UTC`.
+- Scheduled full scraping every other day at `02:00 UTC`.
 - Manual runs from the GitHub Actions tab.
 - A `force_full` option for manual full scrapes.
 - Scraper logs uploaded as workflow artifacts.
