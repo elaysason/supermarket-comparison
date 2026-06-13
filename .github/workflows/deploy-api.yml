@@ -1,0 +1,82 @@
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/api/**"
+      - "app/db/**"
+      - "app/models.py"
+      - "Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".gcloudignore"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up uv
+        # astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Validate deploy configuration
+        run: |
+          test -n "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" || (echo "Missing secret: GCP_WORKLOAD_IDENTITY_PROVIDER" && exit 1)
+          test -n "${{ secrets.GCP_SERVICE_ACCOUNT }}" || (echo "Missing secret: GCP_SERVICE_ACCOUNT" && exit 1)
+          test -n "${{ vars.GCP_PROJECT_ID }}" || (echo "Missing variable: GCP_PROJECT_ID" && exit 1)
+          test -n "${{ vars.GCP_REGION }}" || (echo "Missing variable: GCP_REGION" && exit 1)
+          test -n "${{ vars.CLOUD_RUN_SERVICE }}" || (echo "Missing variable: CLOUD_RUN_SERVICE" && exit 1)
+          test -n "${{ vars.ALLOWED_EXTENSION_ORIGINS }}" || (echo "Missing variable: ALLOWED_EXTENSION_ORIGINS" && exit 1)
+          test -n "${{ vars.DATABASE_URL_SECRET_NAME }}" || (echo "Missing variable: DATABASE_URL_SECRET_NAME" && exit 1)
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ vars.CLOUD_RUN_SERVICE }}" \
+            --source . \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 3 \
+            --concurrency 5 \
+            --set-env-vars "^|^ALLOWED_EXTENSION_ORIGINS=${{ vars.ALLOWED_EXTENSION_ORIGINS }}|MAX_COMPARE_BARCODES=100|MAX_BARCODE_LENGTH=64|MAX_ITEM_QUANTITY=99|DATABASE_STATEMENT_TIMEOUT_MS=10000" \
+            --update-secrets "DATABASE_URL=${{ vars.DATABASE_URL_SECRET_NAME }}:latest" \
+            --quiet
+
+      - name: Verify health
+        run: |
+          SERVICE_URL=$(gcloud run services describe "${{ vars.CLOUD_RUN_SERVICE }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format 'value(status.url)')
+          curl --fail --show-error --silent "$SERVICE_URL/health"

@@ -34,6 +34,7 @@ set are reported as unmatched instead of guessed.
 - `extension/` - Chrome extension source.
 - `supabase/migrations/` - database schema migrations.
 - `.github/workflows/scrape-prices.yml` - scheduled scraper workflow.
+- `.github/workflows/deploy-api.yml` - Cloud Run API deployment workflow.
 - `Dockerfile` - API container image for Cloud Run.
 
 ## Requirements
@@ -173,6 +174,123 @@ Allow that origin in the API as `chrome-extension://THE_ID`.
 The API is deployable as a container. Cloud Run is a good fit because it provides
 a public HTTPS URL and can scale to zero.
 
+Pushes to `main` automatically deploy the API when API, database access,
+dependency, Docker, or deployment workflow files change. The workflow is defined
+in `.github/workflows/deploy-api.yml` and can also be run manually from the
+GitHub Actions tab.
+
+Required GitHub repository secrets:
+
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` - Workload Identity Provider resource name.
+- `GCP_SERVICE_ACCOUNT` - deploy service account email.
+
+Required GitHub repository variables:
+
+- `GCP_PROJECT_ID` - `salkal-498916`.
+- `GCP_REGION` - `europe-west1`.
+- `CLOUD_RUN_SERVICE` - `supermarket-comparison-api`.
+- `ALLOWED_EXTENSION_ORIGINS` - `chrome-extension://lpanbbdfjojpggjjigbeohneelcmheln`.
+- `DATABASE_URL_SECRET_NAME` - Secret Manager secret name containing
+  `DATABASE_URL`: `SUPABASE_DB_URL`.
+
+The deploy service account needs permission to deploy Cloud Run from source,
+write build artifacts, and read the configured Secret Manager secret.
+
+One-time GitHub/GCP setup, from a machine with `gcloud` and `gh` installed:
+
+```bash
+PROJECT_ID="salkal-498916"
+PROJECT_NUMBER="649951889970"
+REGION="europe-west1"
+REPO="elaysason/supermarket-comparison"
+POOL_ID="github-actions"
+PROVIDER_ID="github"
+SERVICE_ACCOUNT="github-cloud-run-deploy"
+SECRET_NAME="SUPABASE_DB_URL"
+
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com iamcredentials.googleapis.com \
+  secretmanager.googleapis.com \
+  --project "$PROJECT_ID" --quiet
+
+gcloud iam workload-identity-pools create "$POOL_ID" \
+  --project "$PROJECT_ID" \
+  --location global \
+  --display-name "GitHub Actions" \
+  --quiet
+
+gcloud iam workload-identity-pools providers create-oidc "$PROVIDER_ID" \
+  --project "$PROJECT_ID" \
+  --location global \
+  --workload-identity-pool "$POOL_ID" \
+  --display-name "GitHub" \
+  --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition "attribute.repository == '$REPO' && assertion.ref == 'refs/heads/main'" \
+  --issuer-uri "https://token.actions.githubusercontent.com" \
+  --quiet
+
+gcloud iam service-accounts create "$SERVICE_ACCOUNT" \
+  --project "$PROJECT_ID" \
+  --display-name "GitHub Cloud Run deploy" \
+  --quiet
+
+DEPLOYER="$SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com"
+PROVIDER="projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/providers/$PROVIDER_ID"
+RUNTIME_SERVICE_ACCOUNT="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
+
+gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" \
+  --project "$PROJECT_ID" \
+  --role roles/iam.workloadIdentityUser \
+  --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository/$REPO" \
+  --quiet
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:$DEPLOYER" \
+  --role roles/run.admin \
+  --quiet
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:$DEPLOYER" \
+  --role roles/run.sourceDeveloper \
+  --quiet
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:$DEPLOYER" \
+  --role roles/logging.viewer \
+  --quiet
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:$DEPLOYER" \
+  --role roles/serviceusage.serviceUsageConsumer \
+  --quiet
+
+gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SERVICE_ACCOUNT" \
+  --project "$PROJECT_ID" \
+  --member "serviceAccount:$DEPLOYER" \
+  --role roles/iam.serviceAccountUser \
+  --quiet
+
+gcloud secrets add-iam-policy-binding "$SECRET_NAME" \
+  --project "$PROJECT_ID" \
+  --member "serviceAccount:$DEPLOYER" \
+  --role roles/secretmanager.secretAccessor \
+  --quiet
+
+gcloud secrets add-iam-policy-binding "$SECRET_NAME" \
+  --project "$PROJECT_ID" \
+  --member "serviceAccount:$RUNTIME_SERVICE_ACCOUNT" \
+  --role roles/secretmanager.secretAccessor \
+  --quiet
+
+gh variable set GCP_PROJECT_ID --repo "$REPO" --body "$PROJECT_ID"
+gh variable set GCP_REGION --repo "$REPO" --body "$REGION"
+gh variable set CLOUD_RUN_SERVICE --repo "$REPO" --body "supermarket-comparison-api"
+gh variable set ALLOWED_EXTENSION_ORIGINS --repo "$REPO" --body "chrome-extension://lpanbbdfjojpggjjigbeohneelcmheln"
+gh variable set DATABASE_URL_SECRET_NAME --repo "$REPO" --body "$SECRET_NAME"
+gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER --repo "$REPO" --body "$PROVIDER"
+gh secret set GCP_SERVICE_ACCOUNT --repo "$REPO" --body "$DEPLOYER"
+```
+
 Recommended deploy command:
 
 ```bash
@@ -185,7 +303,7 @@ gcloud run deploy supermarket-comparison-api \
   --concurrency 5 \
   --set-env-vars ALLOWED_EXTENSION_ORIGINS="chrome-extension://lpanbbdfjojpggjjigbeohneelcmheln" \
   --set-env-vars MAX_COMPARE_BARCODES=100,MAX_BARCODE_LENGTH=64,MAX_ITEM_QUANTITY=99,DATABASE_STATEMENT_TIMEOUT_MS=10000 \
-  --update-secrets DATABASE_URL=supermarket-comparison-database-url:latest
+  --update-secrets DATABASE_URL=SUPABASE_DB_URL:latest
 ```
 
 After deployment, verify the service starts:
