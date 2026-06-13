@@ -79,6 +79,13 @@ _pool = ConnectionPool(
 
 
 class SupabaseRepository:
+    def ping(self) -> None:
+        """Run a minimal query to verify database connectivity."""
+        with _pool.connection(timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+
     def _chunk_data(
         self, data: List[Any], chunk_size: int = 1000
     ) -> Generator[List[Any], None, None]:

@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import time
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, status
@@ -55,6 +56,8 @@ LOCAL_ORIGIN_RE = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$")
 MAX_COMPARE_BARCODES = _positive_int_env("MAX_COMPARE_BARCODES", 100)
 MAX_BARCODE_LENGTH = _positive_int_env("MAX_BARCODE_LENGTH", 64)
 MAX_ITEM_QUANTITY = _positive_int_env("MAX_ITEM_QUANTITY", 99)
+READY_CACHE_SECONDS = _positive_int_env("READY_CACHE_SECONDS", 30)
+_last_ready_at = 0.0
 
 allowed_cors_origins = list(ALLOWED_EXTENSION_ORIGINS)
 allowed_cors_regex = (
@@ -469,3 +472,23 @@ def compare_cart(
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict:
+    global _last_ready_at
+
+    now = time.monotonic()
+    if now - _last_ready_at < READY_CACHE_SECONDS:
+        return {"status": "ready"}
+
+    try:
+        SupabaseRepository().ping()
+    except Exception as exc:
+        logger.exception("Readiness check failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database is not ready.",
+        ) from exc
+    _last_ready_at = now
+    return {"status": "ready"}

@@ -66,6 +66,7 @@ Check health:
 
 ```bash
 curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/ready
 ```
 
 Lint and format:
@@ -92,6 +93,7 @@ Important API variables:
   Run instance.
 - `DATABASE_STATEMENT_TIMEOUT_MS` - Postgres statement timeout for API requests.
   Do not set this for scraper jobs that perform bulk writes.
+- `READY_CACHE_SECONDS` - short cache window for the DB-backed `/ready` check.
 - `ALLOW_LOCAL_ORIGINS` - optional local development CORS/origin override. Do
   not enable it in production.
 
@@ -165,6 +167,7 @@ Operational checks:
 
 ```bash
 curl https://YOUR_CLOUD_RUN_URL/health
+curl https://YOUR_CLOUD_RUN_URL/ready
 uv run ruff check .
 ```
 
