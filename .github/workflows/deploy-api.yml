@@ -68,8 +68,8 @@ jobs:
             --allow-unauthenticated \
             --min-instances 0 \
             --max-instances 3 \
-            --concurrency 5 \
-            --set-env-vars "^|^ALLOWED_EXTENSION_ORIGINS=${{ vars.ALLOWED_EXTENSION_ORIGINS }}|MAX_COMPARE_BARCODES=100|MAX_BARCODE_LENGTH=64|MAX_ITEM_QUANTITY=99|DATABASE_STATEMENT_TIMEOUT_MS=10000" \
+            --concurrency 3 \
+            --set-env-vars "^|^ALLOWED_EXTENSION_ORIGINS=${{ vars.ALLOWED_EXTENSION_ORIGINS }}|MAX_COMPARE_BARCODES=100|MAX_BARCODE_LENGTH=64|MAX_ITEM_QUANTITY=99|DATABASE_POOL_MIN_SIZE=1|DATABASE_POOL_MAX_SIZE=3|DATABASE_STATEMENT_TIMEOUT_MS=10000" \
             --update-secrets "DATABASE_URL=${{ vars.DATABASE_URL_SECRET_NAME }}:latest" \
             --quiet
 

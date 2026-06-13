@@ -20,10 +20,10 @@ def _env_any(*names: str) -> str | None:
     return None
 
 
-def _positive_int_env(name: str) -> int | None:
+def _positive_int_env(name: str, default: int | None = None) -> int | None:
     value = os.getenv(name)
     if not value:
-        return None
+        return default
     try:
         parsed = int(value)
     except ValueError:
@@ -65,10 +65,15 @@ def _connection_kwargs() -> dict[str, str]:
     return {"options": f"-c statement_timeout={timeout_ms}"}
 
 
+_pool_min_size = _positive_int_env("DATABASE_POOL_MIN_SIZE", 1) or 1
+_pool_max_size = _positive_int_env("DATABASE_POOL_MAX_SIZE", 3) or 3
+if _pool_min_size > _pool_max_size:
+    raise ValueError("DATABASE_POOL_MIN_SIZE must be <= DATABASE_POOL_MAX_SIZE")
+
 _pool = ConnectionPool(
     _build_conninfo(),
-    min_size=1,
-    max_size=5,
+    min_size=_pool_min_size,
+    max_size=_pool_max_size,
     kwargs=_connection_kwargs(),
 )
 
