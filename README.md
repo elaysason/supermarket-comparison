@@ -118,7 +118,15 @@ not be committed.
 Production scraping runs from a GitHub self-hosted Windows runner on a local
 Israeli network because some supermarket price sites block cloud/datacenter
 traffic. The workflow supports scheduled delta runs, scheduled full runs, manual
-runs, and scraper log artifacts.
+runs, scraper log artifacts, and optional completion emails.
+
+Email notifications use SMTP when these GitHub settings are configured:
+
+- Secrets: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
+- Variables: `SCRAPE_MAIL_FROM`, `SCRAPE_MAIL_TO`.
+
+For Gmail, use an app password with `SMTP_HOST=smtp.gmail.com` and
+`SMTP_PORT=587`.
 
 ## Browser Extension
 
