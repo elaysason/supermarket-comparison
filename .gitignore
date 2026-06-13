@@ -12,5 +12,9 @@ __pycache__/
 .vscode/
 .kilocode/
 opencode.json
+opencode.jsonc
+.opencode/
+.ruff_cache/
+logs/
 
 *.xml
