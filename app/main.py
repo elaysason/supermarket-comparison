@@ -90,15 +90,36 @@ def main(force_full: bool = False):
                 scraper.chain_name,
             )
 
-        # 3. Download the latest usable price file
-        file_path = None
+        # 3. Download and parse the latest usable price file
         selected_file_type = None
+        products = []
+        prices = []
         for candidate_file_type in price_files_to_try:
             file_path = scraper.download_latest(candidate_file_type)
             if file_path:
-                selected_file_type = candidate_file_type
                 logger.info("Using %s file: %s", candidate_file_type.value, file_path)
-                break
+
+                logger.info("Parsing %s file: %s", candidate_file_type.value, file_path)
+                products = []
+                prices = []
+
+                for item in scraper.parse(file_path):
+                    if item:
+                        if "product" in item:
+                            products.append(item["product"])
+                        if "price" in item:
+                            prices.append(item["price"])
+
+                parse_failed = getattr(scraper, "last_parse_failed", False)
+                if not parse_failed:
+                    selected_file_type = candidate_file_type
+                    break
+
+                logger.warning(
+                    "Failed to parse %s file for %s. Trying next candidate.",
+                    candidate_file_type.value,
+                    scraper.chain_name,
+                )
 
             logger.warning(
                 "No usable %s file for %s.",
@@ -107,21 +128,8 @@ def main(force_full: bool = False):
             )
             scraper.reset_file_cache()
 
-        if file_path and selected_file_type is not None:
-            # 4. Parse the XML and insert prices into DB
-            logger.info("Parsing %s file: %s", selected_file_type.value, file_path)
-
-            products = []
-            prices = []
-
-            for item in scraper.parse(file_path):
-                if item:
-                    if "product" in item:
-                        products.append(item["product"])
-                    if "price" in item:
-                        prices.append(item["price"])
-
-            # 5. Upsert products first (prices FK depends on products)
+        if selected_file_type is not None:
+            # 4. Upsert products first (prices FK depends on products)
             repo.upsert_products(products)
             repo.upsert_prices(prices)
             skipped = getattr(scraper, "last_parse_skipped", 0)

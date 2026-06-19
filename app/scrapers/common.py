@@ -89,6 +89,7 @@ class CommonXMLScraper(BaseScraper):
         self._cached_file_url: Optional[str] = None
         self._category_mapping: Dict[FileType, int] = {}
         self.last_parse_skipped: int = 0
+        self.last_parse_failed: bool = False
         self._session = self._create_session()
 
     def _file_type_to_category(self, file_type: FileType) -> Optional[int]:
@@ -128,21 +129,22 @@ class CommonXMLScraper(BaseScraper):
 
     def parse(self, file_path):
         logger.info("Starting parse for %s", file_path)
+        self.last_parse_skipped = 0
+        self.last_parse_failed = False
 
-        context = ET.iterparse(file_path, events=("end",))
-        VALID_TAGS = _get_valid_tags(file_path)
-
-        if not VALID_TAGS:
+        valid_tags = _get_valid_tags(file_path)
+        if not valid_tags:
+            self.last_parse_failed = True
             logger.warning("No valid tags found for file path: %s", file_path)
             return
 
         items_found = 0
         items_skipped = 0
-        self.last_parse_skipped = 0
 
         try:
+            context = ET.iterparse(file_path, events=("end",))
             for event, elem in context:
-                if elem.tag not in VALID_TAGS:
+                if elem.tag not in valid_tags:
                     continue
                 try:
                     processed_item = self._process_single_item(elem)
@@ -164,6 +166,7 @@ class CommonXMLScraper(BaseScraper):
                             del parent[0]
 
         except (ET.XMLSyntaxError, ET.LxmlError):
+            self.last_parse_failed = True
             logger.error(
                 "XML parse error in %s after %d items. File may be truncated.",
                 file_path,

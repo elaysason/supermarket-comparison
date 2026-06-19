@@ -28,8 +28,15 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up uv
-        # astral-sh/setup-uv@v5
-        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081
+        shell: pwsh
+        run: |
+          if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+            python -m pip install --user uv==0.8.14
+            $scriptsPath = Join-Path (python -m site --user-base) "Scripts"
+            $env:PATH = "$scriptsPath;$env:PATH"
+            $scriptsPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          uv --version
 
       - name: Install dependencies
         run: uv sync --frozen
