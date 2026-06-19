@@ -54,6 +54,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path "logs" | Out-Null
           $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
           $logPath = "logs/scraper-$timestamp.log"
+          $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+          $PSDefaultParameterValues['Tee-Object:Encoding'] = 'utf8'
           "Scraper started at $(Get-Date -Format o)" | Tee-Object -FilePath $logPath
 
           $scheduledFullCheck = $env:GITHUB_EVENT_NAME -eq "schedule" -and $env:SCHEDULE -eq "0 2 * * *"
