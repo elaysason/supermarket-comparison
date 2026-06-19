@@ -18,7 +18,7 @@ on:
 
 jobs:
   scrape:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/fix-email-log-display'
     runs-on: [self-hosted, salkal-scraper]
     timeout-minutes: 120
 
