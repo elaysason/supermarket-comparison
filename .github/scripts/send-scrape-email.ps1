@@ -94,7 +94,6 @@ $encodedSchedule = [System.Net.WebUtility]::HtmlEncode($env:SCHEDULE)
 $encodedRunUrl = [System.Net.WebUtility]::HtmlEncode($runUrl)
 $encodedLogsUrl = [System.Net.WebUtility]::HtmlEncode($env:SCRAPE_LOGS_URL)
 $encodedSummary = [System.Net.WebUtility]::HtmlEncode($summaryText)
-$encodedLog = [System.Net.WebUtility]::HtmlEncode($logText)
 $encodedFullLog = [System.Net.WebUtility]::HtmlEncode($fullLogText)
 $encodedAlert = [System.Net.WebUtility]::HtmlEncode($alertText)
 
@@ -129,11 +128,8 @@ $body = @"
                 <h2 style="font-size:16px;margin:28px 0 10px;color:#0f172a;">Scraper summary</h2>
                 <pre style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;color:#172033;font-size:13px;line-height:1.45;overflow-x:auto;">$encodedSummary</pre>
 
-                <h2 style="font-size:16px;margin:24px 0 10px;color:#0f172a;">Last scraper log lines</h2>
-                <p style="margin:0 0 10px;font-size:13px;color:#64748b;">Short preview first. A larger embedded log is shown directly below.</p>
-                <pre style="white-space:pre-wrap;background:#0b1220;border-radius:10px;padding:16px;color:#dbeafe;font-size:12px;line-height:1.5;overflow-x:auto;">$encodedLog</pre>
-
-                <h2 id="full-log" style="font-size:16px;margin:24px 0 10px;color:#0f172a;">Full logs in this email</h2>
+                <h2 style="font-size:16px;margin:24px 0 10px;color:#0f172a;">Scraper log</h2>
+                <p style="margin:0 0 10px;font-size:13px;color:#64748b;">Embedded log preview. Use Download full logs for the uploaded artifact.</p>
                 <pre style="white-space:pre-wrap;background:#0b1220;border-radius:10px;padding:16px;color:#dbeafe;font-size:12px;line-height:1.5;overflow-x:auto;">$encodedFullLog</pre>
               </td>
             </tr>
