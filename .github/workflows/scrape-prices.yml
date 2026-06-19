@@ -61,6 +61,8 @@ jobs:
           $scheduledFullCheck = $env:GITHUB_EVENT_NAME -eq "schedule" -and $env:SCHEDULE -eq "0 2 * * *"
           $epochDays = [int][Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 86400)
           $scheduledFull = $scheduledFullCheck -and ($epochDays % 2 -eq 0)
+          $effectiveForceFull = $env:FORCE_FULL -eq "1" -or $scheduledFull
+          "effective_force_full=$($effectiveForceFull.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
           if ($scheduledFullCheck -and -not $scheduledFull) {
             "Skipping full scrape on off day." | Tee-Object -FilePath $logPath -Append
@@ -70,7 +72,7 @@ jobs:
             exit 0
           }
 
-          if ($env:FORCE_FULL -eq "1" -or $scheduledFull) {
+          if ($effectiveForceFull) {
             Invoke-Expression "$env:UV_RUN run python -m app.main --force-full" 2>&1 | Tee-Object -FilePath $logPath -Append
           } else {
             Invoke-Expression "$env:UV_RUN run python -m app.main" 2>&1 | Tee-Object -FilePath $logPath -Append
@@ -105,6 +107,7 @@ jobs:
           SCRAPE_MAIL_TO: ${{ vars.SCRAPE_MAIL_TO }}
           SCRAPE_STATUS: ${{ steps.run_scraper.outcome }}
           SCRAPE_LOGS_URL: ${{ steps.upload_scraper_logs.outputs.artifact-url }}
-          FORCE_FULL: ${{ inputs.force_full && '1' || '' }}
+          FORCE_FULL: ${{ steps.run_scraper.outputs.effective_force_full }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
         run: .github/scripts/send-scrape-email.ps1

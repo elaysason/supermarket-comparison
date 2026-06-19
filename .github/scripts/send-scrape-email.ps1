@@ -82,11 +82,29 @@ $statusLabel = if ($hasZeroItemWarning) {
 } else {
   $env:SCRAPE_STATUS
 }
+$runType = if ($env:GITHUB_EVENT_NAME -eq "schedule") {
+  "Scheduled"
+} elseif ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
+  "Manual"
+} else {
+  $env:GITHUB_EVENT_NAME
+}
+$forceFullText = if ($env:FORCE_FULL -eq "true" -or $env:FORCE_FULL -eq "1") {
+  "Yes"
+} else {
+  "No"
+}
+$scheduleText = if ([string]::IsNullOrWhiteSpace($env:SCHEDULE)) {
+  "Not scheduled"
+} else {
+  $env:SCHEDULE
+}
 $runUrl = "$($env:GITHUB_SERVER_URL)/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)"
 $encodedRepository = [System.Net.WebUtility]::HtmlEncode($env:GITHUB_REPOSITORY)
 $encodedBranch = [System.Net.WebUtility]::HtmlEncode($env:GITHUB_REF_NAME)
-$encodedForceFull = [System.Net.WebUtility]::HtmlEncode($env:FORCE_FULL)
-$encodedSchedule = [System.Net.WebUtility]::HtmlEncode($env:SCHEDULE)
+$encodedRunType = [System.Net.WebUtility]::HtmlEncode($runType)
+$encodedForceFull = [System.Net.WebUtility]::HtmlEncode($forceFullText)
+$encodedSchedule = [System.Net.WebUtility]::HtmlEncode($scheduleText)
 $encodedRunUrl = [System.Net.WebUtility]::HtmlEncode($runUrl)
 $encodedLogsUrl = [System.Net.WebUtility]::HtmlEncode($env:SCRAPE_LOGS_URL)
 $encodedSummary = [System.Net.WebUtility]::HtmlEncode($summaryText)
@@ -115,6 +133,7 @@ $body = @"
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:22px;border-collapse:collapse;font-size:14px;">
                   <tr><td style="padding:8px 0;color:#64748b;width:130px;">Repository</td><td style="padding:8px 0;color:#0f172a;">$encodedRepository</td></tr>
                   <tr><td style="padding:8px 0;color:#64748b;">Branch</td><td style="padding:8px 0;color:#0f172a;">$encodedBranch</td></tr>
+                  <tr><td style="padding:8px 0;color:#64748b;">Run type</td><td style="padding:8px 0;color:#0f172a;">$encodedRunType</td></tr>
                   <tr><td style="padding:8px 0;color:#64748b;">Force full</td><td style="padding:8px 0;color:#0f172a;">$encodedForceFull</td></tr>
                   <tr><td style="padding:8px 0;color:#64748b;">Schedule</td><td style="padding:8px 0;color:#0f172a;">$encodedSchedule</td></tr>
                 </table>
