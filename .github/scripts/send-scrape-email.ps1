@@ -92,6 +92,7 @@ $encodedBranch = [System.Net.WebUtility]::HtmlEncode($env:GITHUB_REF_NAME)
 $encodedForceFull = [System.Net.WebUtility]::HtmlEncode($env:FORCE_FULL)
 $encodedSchedule = [System.Net.WebUtility]::HtmlEncode($env:SCHEDULE)
 $encodedRunUrl = [System.Net.WebUtility]::HtmlEncode($runUrl)
+$encodedLogsUrl = [System.Net.WebUtility]::HtmlEncode($env:SCRAPE_LOGS_URL)
 $encodedSummary = [System.Net.WebUtility]::HtmlEncode($summaryText)
 $encodedLog = [System.Net.WebUtility]::HtmlEncode($logText)
 $encodedFullLog = [System.Net.WebUtility]::HtmlEncode($fullLogText)
@@ -123,7 +124,7 @@ $body = @"
                   <tr><td style="padding:8px 0;color:#64748b;">Schedule</td><td style="padding:8px 0;color:#0f172a;">$encodedSchedule</td></tr>
                 </table>
 
-                <p style="margin:18px 0 0;"><a href="$encodedRunUrl" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Open GitHub run</a> <a href="#full-log" style="display:inline-block;margin-left:8px;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Full logs in this email</a></p>
+                <p style="margin:18px 0 0;"><a href="$encodedRunUrl" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Open GitHub run</a> <a href="$encodedLogsUrl" style="display:inline-block;margin-left:8px;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:700;">Download full logs</a></p>
 
                 <h2 style="font-size:16px;margin:28px 0 10px;color:#0f172a;">Scraper summary</h2>
                 <pre style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;color:#172033;font-size:13px;line-height:1.45;overflow-x:auto;">$encodedSummary</pre>

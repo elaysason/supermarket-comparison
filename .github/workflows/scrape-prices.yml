@@ -80,6 +80,7 @@ jobs:
           }
 
       - name: Upload scraper logs
+        id: upload_scraper_logs
         if: always()
         # actions/upload-artifact@v4
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -101,6 +102,7 @@ jobs:
           SCRAPE_MAIL_FROM: ${{ vars.SCRAPE_MAIL_FROM }}
           SCRAPE_MAIL_TO: ${{ vars.SCRAPE_MAIL_TO }}
           SCRAPE_STATUS: ${{ steps.run_scraper.outcome }}
+          SCRAPE_LOGS_URL: ${{ steps.upload_scraper_logs.outputs.artifact-url }}
           FORCE_FULL: ${{ inputs.force_full && '1' || '' }}
           SCHEDULE: ${{ github.event.schedule }}
         run: .github/scripts/send-scrape-email.ps1
