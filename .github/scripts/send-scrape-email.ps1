@@ -42,7 +42,20 @@ $summaryText = if ($logPath) {
   "Scraping summary was not found because no log file was created."
 }
 
-$subject = "[Sal Kal] Scrape $($env:SCRAPE_STATUS) - run $($env:GITHUB_RUN_NUMBER)"
+$zeroItemLines = @($summaryText -split [Environment]::NewLine | Where-Object {
+  $_ -match "^\s+\S.*\s+0 items upserted,"
+})
+$alertText = if ($env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -gt 0) {
+  "WARNING: successful scrape reported zero items for: $($zeroItemLines -join '; ')"
+} else {
+  "No scrape data warnings detected."
+}
+$subjectPrefix = if ($env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -gt 0) {
+  "[Sal Kal] Scrape warning"
+} else {
+  "[Sal Kal] Scrape $($env:SCRAPE_STATUS)"
+}
+$subject = "$subjectPrefix - run $($env:GITHUB_RUN_NUMBER)"
 $body = @"
 Sal Kal scrape completed.
 
@@ -52,6 +65,7 @@ Branch: $($env:GITHUB_REF_NAME)
 Run: $($env:GITHUB_SERVER_URL)/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)
 Force full: $($env:FORCE_FULL)
 Schedule: $($env:SCHEDULE)
+Alert: $alertText
 
 Scraper summary:
 
