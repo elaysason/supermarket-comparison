@@ -22,11 +22,6 @@ $logPath = Get-ChildItem -Path "logs" -Filter "scraper-*.log" -ErrorAction Silen
   Sort-Object LastWriteTime -Descending |
   Select-Object -First 1
 
-$logText = if ($logPath) {
-  (Get-Content -LiteralPath $logPath.FullName -Tail 300) -join [Environment]::NewLine
-} else {
-  "No scraper log file was created."
-}
 $maxEmbeddedLogChars = 60000
 $fullLogText = if ($logPath) {
   $reader = [System.IO.StreamReader]::new($logPath.FullName)
@@ -63,25 +58,26 @@ $summaryText = if ($logPath) {
 $zeroItemLines = @($summaryText -split [Environment]::NewLine | Where-Object {
   $_ -match "^\s+\S.*\s+0 items upserted,"
 })
-$alertText = if ($env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -gt 0) {
+$hasZeroItemWarning = $env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -gt 0
+$alertText = if ($hasZeroItemWarning) {
   "WARNING: successful scrape reported zero items for: $($zeroItemLines -join '; ')"
 } else {
   "No scrape data warnings detected."
 }
-$subjectPrefix = if ($env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -gt 0) {
+$subjectPrefix = if ($hasZeroItemWarning) {
   "[Sal Kal] Scrape warning"
 } else {
   "[Sal Kal] Scrape $($env:SCRAPE_STATUS)"
 }
 $subject = "$subjectPrefix - run $($env:GITHUB_RUN_NUMBER)"
-$statusColor = if ($env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -eq 0) {
+$statusColor = if ($env:SCRAPE_STATUS -eq "success" -and -not $hasZeroItemWarning) {
   "#15803d"
 } elseif ($env:SCRAPE_STATUS -eq "success") {
   "#b45309"
 } else {
   "#b91c1c"
 }
-$statusLabel = if ($env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -gt 0) {
+$statusLabel = if ($hasZeroItemWarning) {
   "warning"
 } else {
   $env:SCRAPE_STATUS
