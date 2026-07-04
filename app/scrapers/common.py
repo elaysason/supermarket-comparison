@@ -2,9 +2,11 @@
 import gzip
 import logging
 import os
+import re
 import zipfile
 from datetime import datetime
 from typing import Any, Dict, Optional, Set
+from zoneinfo import ZoneInfo
 
 import requests
 from lxml import etree as ET
@@ -16,6 +18,7 @@ from app.models import PriceModel, ProductModel, StoreModel
 from app.scrapers.base import BaseScraper, FileType
 
 logger = logging.getLogger(__name__)
+ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 # Module-level tag mapping based on file path patterns
 TAG_MAPPING = {
@@ -46,6 +49,20 @@ def parse_xml_date(date_str: str) -> datetime:
         except ValueError:
             continue
     return datetime.now()
+
+
+def parse_source_file_date(file_path: str) -> Optional[datetime]:
+    """Extract supplier timestamp from common price filename patterns."""
+    filename = os.path.basename(file_path)
+    matches = re.findall(r"(\d{8})[-_]?(\d{4,6})(?!\d)", filename)
+    for date_part, time_part in reversed(matches):
+        raw_value = f"{date_part}{time_part}"
+        date_format = "%Y%m%d%H%M%S" if len(raw_value) == 14 else "%Y%m%d%H%M"
+        try:
+            return datetime.strptime(raw_value, date_format).replace(tzinfo=ISRAEL_TZ)
+        except ValueError:
+            continue
+    return None
 
 
 def _safe_float(

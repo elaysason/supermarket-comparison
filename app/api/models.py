@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,13 @@ class CompareRequest(BaseModel):
     quantities: Dict[str, int] = Field(
         default_factory=dict,
         description="Map of barcode → quantity in cart. Missing entries default to 1.",
+    )
+    item_names: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional map of extracted item id/barcode → display name, used only "
+            "as a fallback when a source site exposes internal product ids."
+        ),
     )
 
 
@@ -66,12 +74,27 @@ class ChainResult(BaseModel):
         ),
     )
     matched_count: int
+    status: Literal[
+        "available",
+        "stale_warning",
+        "stale_strong_warning",
+        "blocked_stale",
+        "no_data",
+    ] = "available"
+    last_updated: Optional[datetime] = None
     shipping: List[ShippingOption] = Field(
         default_factory=list,
         description=(
             "Available delivery/pickup options with their fees for this " "cart total."
         ),
     )
+
+
+class BlockedChain(BaseModel):
+    chain_code: str
+    chain_name: str
+    status: Literal["blocked_stale", "no_data"]
+    last_updated: Optional[datetime] = None
 
 
 class ItemResult(BaseModel):
@@ -91,6 +114,15 @@ class ItemResult(BaseModel):
 
 
 class CompareResponse(BaseModel):
+    recommendation_status: Literal[
+        "available",
+        "low_coverage",
+        "stale_blocked",
+        "not_enough_chains",
+        "no_comparison",
+    ] = "available"
+    coverage_status: Literal["full", "partial", "low_coverage"] = "full"
+    overall_last_updated: Optional[datetime] = None
     comparison_option_type: Optional[Literal["delivery", "pickup"]] = Field(
         None,
         description=(
@@ -125,6 +157,13 @@ class CompareResponse(BaseModel):
     chains: List[ChainResult] = Field(
         default_factory=list,
         description="All competitor chains with their totals and shipping options.",
+    )
+    blocked_chains: List[BlockedChain] = Field(
+        default_factory=list,
+        description=(
+            "Compare chains excluded from recommendation because data is "
+            "stale/missing."
+        ),
     )
     items: List[ItemResult] = Field(
         default_factory=list,

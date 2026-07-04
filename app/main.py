@@ -4,6 +4,7 @@ import os
 
 from app.db.repository import SupabaseRepository
 from app.scrapers.base import FileType, PriceUpdateStrategy
+from app.scrapers.common import parse_source_file_date
 from app.scrapers.registry import get_scrapers
 
 logger = logging.getLogger(__name__)
@@ -129,9 +130,36 @@ def main(force_full: bool = False):
             scraper.reset_file_cache()
 
         if selected_file_type is not None:
+            if selected_file_type == FileType.PRICE_FULL and not prices:
+                logger.error(
+                    "Full price file for %s parsed zero prices. Skipping freshness "
+                    "update to avoid marking stale data as fresh.",
+                    scraper.chain_name,
+                )
+                continue
+
             # 4. Upsert products first (prices FK depends on products)
             repo.upsert_products(products)
-            repo.upsert_prices(prices)
+            if selected_file_type == FileType.PRICE_FULL:
+                repo.replace_store_prices(prices)
+            else:
+                repo.upsert_prices(prices)
+            source_file_date = parse_source_file_date(file_path)
+            if source_file_date and scraper.online_store:
+                repo.upsert_price_import_status(
+                    chain_code=scraper.chain_code,
+                    store_code=scraper.online_store,
+                    price_file_type=selected_file_type.value,
+                    source_file_name=os.path.basename(file_path),
+                    source_file_date=source_file_date,
+                    items_imported=len(prices),
+                )
+            else:
+                logger.warning(
+                    "Could not record import freshness for %s from %s.",
+                    scraper.chain_name,
+                    file_path,
+                )
             skipped = getattr(scraper, "last_parse_skipped", 0)
             summary.append((scraper.chain_name, len(products), skipped))
         else:

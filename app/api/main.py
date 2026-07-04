@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, status
@@ -12,6 +13,7 @@ from app.api.models import (
     CheapestChain,
     CompareRequest,
     CompareResponse,
+    BlockedChain,
     ItemResult,
     ShippingOption,
 )
@@ -57,6 +59,11 @@ MAX_COMPARE_BARCODES = _positive_int_env("MAX_COMPARE_BARCODES", 100)
 MAX_BARCODE_LENGTH = _positive_int_env("MAX_BARCODE_LENGTH", 64)
 MAX_ITEM_QUANTITY = _positive_int_env("MAX_ITEM_QUANTITY", 99)
 READY_CACHE_SECONDS = _positive_int_env("READY_CACHE_SECONDS", 30)
+MIN_COVERAGE_RATIO = 0.60
+CARREFOUR_CHAIN_CODE = "7290055700007"
+STALE_WARNING_DAYS = 2
+STALE_STRONG_WARNING_DAYS = 4
+STALE_BLOCK_DAYS = 7
 _last_ready_at = 0.0
 
 allowed_cors_origins = list(ALLOWED_EXTENSION_ORIGINS)
@@ -188,6 +195,55 @@ def _order_total_for_option(
     return None
 
 
+def _age_days(value: datetime | None) -> float | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (
+        datetime.now(timezone.utc) - value.astimezone(timezone.utc)
+    ).total_seconds() / 86400
+
+
+def _freshness_status(source_file_date: datetime | None) -> str:
+    age_days = _age_days(source_file_date)
+    if age_days is None:
+        return "no_data"
+    if age_days >= STALE_BLOCK_DAYS:
+        return "blocked_stale"
+    if age_days >= STALE_STRONG_WARNING_DAYS:
+        return "stale_strong_warning"
+    if age_days >= STALE_WARNING_DAYS:
+        return "stale_warning"
+    return "available"
+
+
+def _blocked_chain(chain_code: str, status: dict) -> BlockedChain:
+    return BlockedChain(
+        chain_code=chain_code,
+        chain_name=status["chain_name"],
+        status=(
+            "blocked_stale"
+            if _freshness_status(status.get("source_file_date")) == "blocked_stale"
+            else "no_data"
+        ),
+        last_updated=status.get("source_file_date"),
+    )
+
+
+def _coverage_status(matched_count: int, total_count: int) -> str:
+    if total_count == 0 or matched_count == total_count:
+        return "full"
+    if matched_count / total_count < MIN_COVERAGE_RATIO:
+        return "low_coverage"
+    return "partial"
+
+
+def _overall_last_updated(chains: list[ChainResult]) -> datetime | None:
+    dates = [chain.last_updated for chain in chains if chain.last_updated is not None]
+    return min(dates) if dates else None
+
+
 @app.post("/api/compare", response_model=CompareResponse)
 def compare_cart(
     request: CompareRequest,
@@ -195,7 +251,8 @@ def compare_cart(
 ) -> CompareResponse:
     _verify_origin(raw_request)
 
-    if len(request.barcodes) > MAX_COMPARE_BARCODES:
+    original_barcodes = request.barcodes
+    if len(original_barcodes) > MAX_COMPARE_BARCODES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Too many barcodes. Maximum is {MAX_COMPARE_BARCODES}.",
@@ -205,7 +262,7 @@ def compare_cart(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Too many quantity entries. Maximum is {MAX_COMPARE_BARCODES}.",
         )
-    if any(len(barcode) > MAX_BARCODE_LENGTH for barcode in request.barcodes):
+    if any(len(barcode) > MAX_BARCODE_LENGTH for barcode in original_barcodes):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Barcode length must be at most {MAX_BARCODE_LENGTH} characters.",
@@ -216,29 +273,134 @@ def compare_cart(
             detail=f"Item quantity must be at most {MAX_ITEM_QUANTITY}.",
         )
 
-    if not request.barcodes:
+    if not original_barcodes:
         return CompareResponse(
             cheapest_chain=None, matched_count=0, total_count=0, chains=[], items=[]
         )
 
+    repo = SupabaseRepository()
+    known_input_product_names = repo.get_product_names(original_barcodes)
+    resolved_barcodes = {}
+    if request.source_chain_code == CARREFOUR_CHAIN_CODE:
+        unresolved_input_barcodes = set(original_barcodes) - set(
+            known_input_product_names
+        )
+        resolved_barcodes = repo.resolve_barcodes_by_names(
+            source_chain_code=request.source_chain_code,
+            item_names={
+                item_id: name
+                for item_id, name in request.item_names.items()
+                if item_id in unresolved_input_barcodes
+            },
+        )
+    barcode_aliases = {
+        barcode: resolved_barcodes.get(barcode, barcode)
+        for barcode in original_barcodes
+    }
+    barcodes = list(dict.fromkeys(barcode_aliases.values()))
+    quantities_by_barcode: dict[str, int] = {}
+    item_names_by_barcode: dict[str, str] = {}
+    for original_barcode in original_barcodes:
+        resolved_barcode = barcode_aliases[original_barcode]
+        quantities_by_barcode[resolved_barcode] = quantities_by_barcode.get(
+            resolved_barcode, 0
+        ) + max(1, request.quantities.get(original_barcode, 1))
+        item_name = request.item_names.get(original_barcode)
+        if item_name and resolved_barcode not in item_names_by_barcode:
+            item_names_by_barcode[resolved_barcode] = item_name
+
     logger.info(
         "Comparing %d barcodes for source chain %s",
-        len(request.barcodes),
+        len(barcodes),
         request.source_chain_code,
     )
 
     def qty(barcode: str) -> int:
-        return max(1, request.quantities.get(barcode, 1))
+        return max(1, quantities_by_barcode.get(barcode, 1))
 
-    repo = SupabaseRepository()
-    product_names = repo.get_product_names(request.barcodes)
+    product_names = repo.get_product_names(barcodes)
+    product_names.update(
+        {
+            barcode: name
+            for barcode, name in item_names_by_barcode.items()
+            if barcode not in product_names
+        }
+    )
+    compare_statuses = repo.get_compare_chain_statuses()
+    source_import_status = compare_statuses.get(request.source_chain_code)
+    source_freshness_status = _freshness_status(
+        source_import_status.get("source_file_date") if source_import_status else None
+    )
+    blocked_statuses = {
+        chain_code: status
+        for chain_code, status in compare_statuses.items()
+        if _freshness_status(status.get("source_file_date"))
+        in ("blocked_stale", "no_data")
+    }
+    blocked_chains = [
+        _blocked_chain(chain_code, status)
+        for chain_code, status in blocked_statuses.items()
+        if chain_code != request.source_chain_code
+    ]
+
+    if source_freshness_status in ("blocked_stale", "no_data"):
+        source_chain_result = None
+        source_data = repo.get_source_prices(
+            source_chain_code=request.source_chain_code,
+            barcodes=barcodes,
+        )
+        src = source_data.get(request.source_chain_code)
+        if src:
+            source_chain_result = ChainResult(
+                chain_code=request.source_chain_code,
+                chain_name=src["chain_name"],
+                items_total=0,
+                order_total=None,
+                matched_count=0,
+                shipping=[],
+                status=source_freshness_status,
+                last_updated=(
+                    source_import_status.get("source_file_date")
+                    if source_import_status
+                    else None
+                ),
+            )
+        return CompareResponse(
+            recommendation_status="stale_blocked",
+            coverage_status="full",
+            cheapest_chain=None,
+            source_chain=source_chain_result,
+            matched_count=0,
+            total_count=len(barcodes),
+            chains=[],
+            blocked_chains=blocked_chains,
+            items=[
+                ItemResult(
+                    barcode=b,
+                    product_name=product_names.get(b),
+                    quantity=qty(b),
+                    unit_price=None,
+                    competitor_price=None,
+                    matched=False,
+                )
+                for b in barcodes
+            ],
+        )
+
+    available_competitor_codes = [
+        chain_code
+        for chain_code in compare_statuses
+        if chain_code != request.source_chain_code
+        and chain_code not in blocked_statuses
+    ]
     competitor_data = repo.get_competitor_prices(
         source_chain_code=request.source_chain_code,
-        barcodes=request.barcodes,
+        barcodes=barcodes,
+        chain_codes=available_competitor_codes,
     )
     source_data = repo.get_source_prices(
         source_chain_code=request.source_chain_code,
-        barcodes=request.barcodes,
+        barcodes=barcodes,
     )
 
     # Build the common barcode set. When the source chain has reliable price
@@ -247,7 +409,7 @@ def compare_cart(
     # store 150), fall back to the requested cart barcodes and compare only the
     # overlap across competitors.
     src = source_data.get(request.source_chain_code)
-    src_barcodes_raw = set(src["items"].keys()) if src else set(request.barcodes)
+    src_barcodes_raw = set(src["items"].keys()) if src else set(barcodes)
 
     common_barcodes = set(src_barcodes_raw)
     for chain in competitor_data.values():
@@ -282,14 +444,24 @@ def compare_cart(
                 order_total=_best_available_order_total(src_total, src_shipping),
                 matched_count=0,
                 shipping=src_shipping,
+                status=source_freshness_status,
+                last_updated=source_import_status.get("source_file_date"),
             )
 
         return CompareResponse(
+            recommendation_status="no_comparison",
+            coverage_status="low_coverage" if barcodes else "full",
+            overall_last_updated=(
+                source_import_status.get("source_file_date")
+                if source_import_status
+                else None
+            ),
             cheapest_chain=None,
             source_chain=source_chain_result,
             matched_count=0,
-            total_count=len(request.barcodes),
+            total_count=len(barcodes),
             chains=[],
+            blocked_chains=blocked_chains,
             items=[
                 ItemResult(
                     barcode=b,
@@ -299,7 +471,7 @@ def compare_cart(
                     competitor_price=None,
                     matched=False,
                 )
-                for b in request.barcodes
+                for b in barcodes
             ],
         )
 
@@ -346,6 +518,10 @@ def compare_cart(
                 "items_total": cart_total,
                 "matched_count": matched_in_common,
                 "shipping": shipping,
+                "status": _freshness_status(
+                    compare_statuses[chain_code].get("source_file_date")
+                ),
+                "last_updated": compare_statuses[chain_code].get("source_file_date"),
             }
         )
 
@@ -380,6 +556,8 @@ def compare_cart(
                 ),
                 matched_count=chain["matched_count"],
                 shipping=chain["shipping"],
+                status=chain["status"],
+                last_updated=chain["last_updated"],
             )
         )
     source_chain_result = (
@@ -394,10 +572,22 @@ def compare_cart(
             ),
             matched_count=len(common_barcodes),
             shipping=source_shipping,
+            status=source_freshness_status,
+            last_updated=source_import_status.get("source_file_date"),
         )
         if src
         else None
     )
+
+    all_available_chains = [
+        chain for chain in [source_chain_result, *chain_results] if chain
+    ]
+    coverage = _coverage_status(len(common_barcodes), len(barcodes))
+    recommendation_status = "available"
+    if len(all_available_chains) < 2:
+        recommendation_status = "not_enough_chains"
+    elif coverage == "low_coverage":
+        recommendation_status = "low_coverage"
 
     # Cheapest competitor = lowest currently available order total.
     eligible_chain_results = [
@@ -405,7 +595,7 @@ def compare_cart(
     ]
     cheapest = (
         min(eligible_chain_results, key=lambda c: c.order_total)
-        if eligible_chain_results
+        if eligible_chain_results and recommendation_status == "available"
         else None
     )
 
@@ -418,7 +608,7 @@ def compare_cart(
         )
 
         cheapest_items = competitor_data[cheapest.chain_code]["items"]
-        for barcode in request.barcodes:
+        for barcode in barcodes:
             q = qty(barcode)
             if barcode in common_barcodes and barcode in cheapest_items:
                 entry = cheapest_items[barcode]
@@ -450,6 +640,9 @@ def compare_cart(
         logger.info("No competitor has an available fulfillment option for this cart.")
 
     return CompareResponse(
+        recommendation_status=recommendation_status,
+        coverage_status=coverage,
+        overall_last_updated=_overall_last_updated(all_available_chains),
         comparison_option_type=comparison_option_type,
         cheapest_chain=(
             CheapestChain(
@@ -462,9 +655,10 @@ def compare_cart(
             else None
         ),
         source_chain=source_chain_result,
-        matched_count=cheapest.matched_count if cheapest else 0,
-        total_count=len(request.barcodes),
+        matched_count=len(common_barcodes),
+        total_count=len(barcodes),
         chains=chain_results,
+        blocked_chains=blocked_chains,
         items=items,
     )
 

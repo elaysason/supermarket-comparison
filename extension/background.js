@@ -80,6 +80,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       source_chain_code: message.source_chain_code,
       barcodes: message.barcodes || [],
       quantities: message.quantities || {},
+      item_names: message.item_names || {},
     })
       .then((data) => respond({ ok: true, data }))
       .catch((err) =>

@@ -1,5 +1,7 @@
 import logging
 import os
+import re
+from datetime import datetime
 from typing import Any, Dict, Generator, List
 
 from dotenv import load_dotenv
@@ -10,6 +12,48 @@ from app.models import PriceModel, ProductModel, StoreModel
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+
+_NAME_TOKEN_RE = re.compile(r"[\w\u0590-\u05ff]+", re.UNICODE)
+
+
+def _normalize_name(value: str) -> str:
+    tokens = _NAME_TOKEN_RE.findall((value or "").lower())
+    return " ".join(tokens)
+
+
+def _name_tokens(value: str) -> set[str]:
+    return {token for token in _normalize_name(value).split() if len(token) >= 2}
+
+
+def _numeric_tokens(value: str) -> set[str]:
+    return set(re.findall(r"\d+(?:\.\d+)?", value or ""))
+
+
+def _name_match_score(cart_name: str, db_name: str) -> float:
+    cart_norm = _normalize_name(cart_name)
+    db_norm = _normalize_name(db_name)
+    if not cart_norm or not db_norm:
+        return 0.0
+
+    cart_numbers = _numeric_tokens(cart_norm)
+    db_numbers = _numeric_tokens(db_norm)
+    if cart_numbers and db_numbers and not (cart_numbers & db_numbers):
+        return 0.0
+
+    if db_norm == cart_norm:
+        return 1.0
+
+    cart_tokens = _name_tokens(cart_norm)
+    db_tokens = _name_tokens(db_norm)
+    if not cart_tokens or not db_tokens:
+        return 0.0
+
+    overlap = len(cart_tokens & db_tokens)
+    token_score = overlap / max(len(db_tokens | cart_tokens), 1)
+    if token_score >= 0.9:
+        return token_score
+    return 0.0
 
 
 def _env_any(*names: str) -> str | None:
@@ -275,6 +319,165 @@ class SupabaseRepository:
             logger.error("Database insertion failed: %s", e)
             raise
 
+    def replace_store_prices(self, prices: List[PriceModel]) -> None:
+        """Upsert a full store snapshot and remove rows absent from it."""
+        if not prices:
+            logger.info("No prices to replace. Skipping.")
+            return
+
+        chain_code = prices[0].chain_code
+        store_code = prices[0].store_code
+        barcodes = [price.barcode for price in prices]
+        upsert_query = """
+            INSERT INTO prices (
+                chain_code,
+                store_code,
+                barcode,
+                price,
+                price_per_unit,
+                update_date
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (chain_code, store_code, barcode) DO UPDATE SET
+                price = EXCLUDED.price,
+                price_per_unit = EXCLUDED.price_per_unit,
+                update_date = EXCLUDED.update_date;
+        """
+        delete_query = """
+            DELETE FROM prices
+            WHERE chain_code = %s
+              AND store_code = %s
+              AND NOT (barcode = ANY(%s));
+        """
+
+        try:
+            with _pool.connection() as conn:
+                with conn.cursor() as cur:
+                    for chunk in self._chunk_data(prices):
+                        data_tuples = [
+                            (
+                                p.chain_code,
+                                p.store_code,
+                                p.barcode,
+                                p.price,
+                                p.price_per_unit,
+                                p.update_date,
+                            )
+                            for p in chunk
+                        ]
+                        cur.executemany(upsert_query, data_tuples)
+
+                    cur.execute(delete_query, (chain_code, store_code, barcodes))
+                    removed_count = cur.rowcount
+
+                conn.commit()
+                logger.info(
+                    "Replaced %d prices for chain=%s, store=%s; removed %d stale rows.",
+                    len(prices),
+                    chain_code,
+                    store_code,
+                    removed_count,
+                )
+        except Exception as e:
+            logger.error("Store price replacement failed: %s", e)
+            raise
+
+    def upsert_price_import_status(
+        self,
+        chain_code: str,
+        store_code: str,
+        price_file_type: str,
+        source_file_name: str,
+        source_file_date: datetime,
+        items_imported: int,
+    ) -> None:
+        """Record the latest successfully imported supplier price file."""
+        upsert_query = """
+            INSERT INTO price_import_status (
+                chain_code,
+                store_code,
+                price_file_type,
+                source_file_name,
+                source_file_date,
+                last_success_at,
+                items_imported
+            )
+            VALUES (%s, %s, %s, %s, %s, now(), %s)
+            ON CONFLICT (chain_code, store_code) DO UPDATE SET
+                price_file_type = EXCLUDED.price_file_type,
+                source_file_name = EXCLUDED.source_file_name,
+                source_file_date = EXCLUDED.source_file_date,
+                last_success_at = now(),
+                items_imported = EXCLUDED.items_imported;
+        """
+
+        try:
+            with _pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        upsert_query,
+                        (
+                            chain_code,
+                            store_code,
+                            price_file_type,
+                            source_file_name,
+                            source_file_date,
+                            items_imported,
+                        ),
+                    )
+                conn.commit()
+                logger.info(
+                    "Recorded import freshness for chain=%s, store=%s, file=%s.",
+                    chain_code,
+                    store_code,
+                    source_file_name,
+                )
+        except Exception as e:
+            logger.error("Import status upsert failed: %s", e)
+            raise
+
+    def get_compare_chain_statuses(self) -> Dict[str, Any]:
+        """Return compare-store metadata with the latest price import status."""
+        query = """
+            SELECT
+                ccs.chain_code,
+                c.name,
+                ccs.store_code,
+                pis.source_file_date,
+                pis.last_success_at,
+                pis.source_file_name
+            FROM chain_compare_stores ccs
+            JOIN chains c ON c.chain_code = ccs.chain_code
+            LEFT JOIN price_import_status pis
+              ON pis.chain_code = ccs.chain_code
+             AND pis.store_code = ccs.store_code
+            ORDER BY c.name
+        """
+        result: Dict[str, Any] = {}
+        try:
+            with _pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query)
+                    for (
+                        chain_code,
+                        chain_name,
+                        store_code,
+                        source_file_date,
+                        last_success_at,
+                        source_file_name,
+                    ) in cur.fetchall():
+                        result[chain_code] = {
+                            "chain_name": chain_name,
+                            "store_code": store_code,
+                            "source_file_date": source_file_date,
+                            "last_success_at": last_success_at,
+                            "source_file_name": source_file_name,
+                        }
+        except Exception as e:
+            logger.error("Error fetching compare chain statuses: %s", e)
+            raise
+        return result
+
     def get_shipping_costs(self, chain_codes: List[str]) -> Dict[str, Any]:
         """
         Returns shipping options for the given chain codes.
@@ -355,6 +558,55 @@ class SupabaseRepository:
             logger.error("Error fetching product names: %s", e)
         return result
 
+    def resolve_barcodes_by_names(
+        self,
+        source_chain_code: str,
+        item_names: Dict[str, str],
+    ) -> Dict[str, str]:
+        """Map internal cart ids to barcodes by strict source-store name match."""
+        if not item_names:
+            return {}
+
+        query = """
+            SELECT p.barcode, pr.product_name
+            FROM prices p
+            JOIN chain_compare_stores ccs
+              ON ccs.chain_code = p.chain_code
+             AND ccs.store_code = p.store_code
+            JOIN products pr ON pr.barcode = p.barcode
+            WHERE p.chain_code = %s
+              AND pr.product_name IS NOT NULL
+        """
+
+        candidates: list[tuple[str, str]] = []
+        try:
+            with _pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(query, (source_chain_code,))
+                    candidates = [(barcode, name) for barcode, name in cur.fetchall()]
+        except Exception as e:
+            logger.error("Error resolving barcodes by names: %s", e)
+            raise
+
+        resolved: Dict[str, str] = {}
+        for item_id, cart_name in item_names.items():
+            matches = [
+                (barcode, db_name, _name_match_score(cart_name, db_name))
+                for barcode, db_name in candidates
+            ]
+            matches = [match for match in matches if match[2] >= 0.75]
+            matches.sort(key=lambda match: match[2], reverse=True)
+
+            if not matches:
+                continue
+            if len(matches) > 1 and matches[0][2] == matches[1][2]:
+                logger.info("Ambiguous name fallback for cart item id %s", item_id)
+                continue
+
+            resolved[item_id] = matches[0][0]
+
+        return resolved
+
     def get_source_prices(
         self, source_chain_code: str, barcodes: List[str]
     ) -> Dict[str, Any]:
@@ -420,7 +672,10 @@ class SupabaseRepository:
         return results
 
     def get_competitor_prices(
-        self, source_chain_code: str, barcodes: List[str]
+        self,
+        source_chain_code: str,
+        barcodes: List[str],
+        chain_codes: List[str] | None = None,
     ) -> Dict[str, Any]:
         """
         For a list of barcodes, find the total price at every chain EXCEPT
@@ -439,7 +694,8 @@ class SupabaseRepository:
         if not barcodes:
             return {}
 
-        query = """
+        chain_filter = "AND p.chain_code = ANY(%s)" if chain_codes is not None else ""
+        query = f"""
             SELECT
                 p.chain_code,
                 c.name            AS chain_name,
@@ -454,6 +710,7 @@ class SupabaseRepository:
             LEFT JOIN products pr ON pr.barcode = p.barcode
             WHERE p.chain_code != %s
               AND p.barcode = ANY(%s)
+              {chain_filter}
             ORDER BY p.chain_code, p.barcode, p.price ASC
         """
 
@@ -467,7 +724,10 @@ class SupabaseRepository:
         try:
             with _pool.connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(query, (source_chain_code, barcodes))
+                    params: tuple[Any, ...] = (source_chain_code, barcodes)
+                    if chain_codes is not None:
+                        params = (source_chain_code, barcodes, chain_codes)
+                    cur.execute(query, params)
                     rows = cur.fetchall()
 
             for chain_code, chain_name, barcode, product_name, price in rows:
