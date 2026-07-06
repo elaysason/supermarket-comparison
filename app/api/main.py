@@ -297,10 +297,22 @@ def compare_cart(
         barcode: resolved_barcodes.get(barcode, barcode)
         for barcode in original_barcodes
     }
+    unresolved_internal_barcodes = {
+        barcode
+        for barcode, resolved_barcode in barcode_aliases.items()
+        if barcode == resolved_barcode
+        and barcode in request.item_names
+        and barcode not in known_input_product_names
+    }
     barcodes = list(dict.fromkeys(barcode_aliases.values()))
+    comparable_barcodes = [
+        barcode for barcode in barcodes if barcode not in unresolved_internal_barcodes
+    ]
     quantities_by_barcode: dict[str, int] = {}
     item_names_by_barcode: dict[str, str] = {}
     for original_barcode in original_barcodes:
+        if original_barcode in unresolved_internal_barcodes:
+            continue
         resolved_barcode = barcode_aliases[original_barcode]
         quantities_by_barcode[resolved_barcode] = quantities_by_barcode.get(
             resolved_barcode, 0
@@ -311,14 +323,14 @@ def compare_cart(
 
     logger.info(
         "Comparing %d barcodes for source chain %s",
-        len(barcodes),
+        len(comparable_barcodes),
         request.source_chain_code,
     )
 
     def qty(barcode: str) -> int:
         return max(1, quantities_by_barcode.get(barcode, 1))
 
-    product_names = repo.get_product_names(barcodes)
+    product_names = repo.get_product_names(comparable_barcodes)
     product_names.update(
         {
             barcode: name
@@ -347,7 +359,7 @@ def compare_cart(
         source_chain_result = None
         source_data = repo.get_source_prices(
             source_chain_code=request.source_chain_code,
-            barcodes=barcodes,
+            barcodes=comparable_barcodes,
         )
         src = source_data.get(request.source_chain_code)
         if src:
@@ -371,7 +383,7 @@ def compare_cart(
             cheapest_chain=None,
             source_chain=source_chain_result,
             matched_count=0,
-            total_count=len(barcodes),
+            total_count=len(original_barcodes),
             chains=[],
             blocked_chains=blocked_chains,
             items=[
@@ -383,7 +395,7 @@ def compare_cart(
                     competitor_price=None,
                     matched=False,
                 )
-                for b in barcodes
+                for b in comparable_barcodes
             ],
         )
 
@@ -395,12 +407,12 @@ def compare_cart(
     ]
     competitor_data = repo.get_competitor_prices(
         source_chain_code=request.source_chain_code,
-        barcodes=barcodes,
+        barcodes=comparable_barcodes,
         chain_codes=available_competitor_codes,
     )
     source_data = repo.get_source_prices(
         source_chain_code=request.source_chain_code,
-        barcodes=barcodes,
+        barcodes=comparable_barcodes,
     )
 
     # Build the common barcode set. When the source chain has reliable price
@@ -409,7 +421,7 @@ def compare_cart(
     # store 150), fall back to the requested cart barcodes and compare only the
     # overlap across competitors.
     src = source_data.get(request.source_chain_code)
-    src_barcodes_raw = set(src["items"].keys()) if src else set(barcodes)
+    src_barcodes_raw = set(src["items"].keys()) if src else set(comparable_barcodes)
 
     common_barcodes = set(src_barcodes_raw)
     for chain in competitor_data.values():
@@ -450,7 +462,7 @@ def compare_cart(
 
         return CompareResponse(
             recommendation_status="no_comparison",
-            coverage_status="low_coverage" if barcodes else "full",
+            coverage_status="low_coverage" if original_barcodes else "full",
             overall_last_updated=(
                 source_import_status.get("source_file_date")
                 if source_import_status
@@ -459,7 +471,7 @@ def compare_cart(
             cheapest_chain=None,
             source_chain=source_chain_result,
             matched_count=0,
-            total_count=len(barcodes),
+            total_count=len(original_barcodes),
             chains=[],
             blocked_chains=blocked_chains,
             items=[
@@ -471,7 +483,7 @@ def compare_cart(
                     competitor_price=None,
                     matched=False,
                 )
-                for b in barcodes
+                for b in comparable_barcodes
             ],
         )
 
@@ -582,7 +594,7 @@ def compare_cart(
     all_available_chains = [
         chain for chain in [source_chain_result, *chain_results] if chain
     ]
-    coverage = _coverage_status(len(common_barcodes), len(barcodes))
+    coverage = _coverage_status(len(common_barcodes), len(original_barcodes))
     recommendation_status = "available"
     if len(all_available_chains) < 2:
         recommendation_status = "not_enough_chains"
@@ -656,7 +668,7 @@ def compare_cart(
         ),
         source_chain=source_chain_result,
         matched_count=len(common_barcodes),
-        total_count=len(barcodes),
+        total_count=len(original_barcodes),
         chains=chain_results,
         blocked_chains=blocked_chains,
         items=items,
