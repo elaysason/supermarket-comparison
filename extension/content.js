@@ -1552,14 +1552,6 @@ async function fetchComparison(chainCode, barcodes, quantities) {
   });
 }
 
-function withTimeout(promise, timeoutMs, message) {
-  let timer = null;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
 // ─── Main run logic ───────────────────────────────────────────────────────────
 
 async function run() {
@@ -1605,10 +1597,11 @@ async function run() {
   showLoadingWidget();
 
   try {
-    const comparePromise = fetchComparison(chain.chain_code, snapshot.barcodes, snapshot.quantities);
-    const data = window.location.hostname.includes("carrefour.co.il")
-      ? await withTimeout(comparePromise, 12000, "טעינת ההשוואה מקרפור נמשכת יותר מדי זמן. נסו שוב בעוד רגע.")
-      : await comparePromise;
+    const data = await fetchComparison(
+      chain.chain_code,
+      snapshot.barcodes,
+      snapshot.quantities,
+    );
     if (runId !== runVersion || state !== State.LOADING) return;
 
     if (window.location.hostname.includes("carrefour.co.il")) {
@@ -1635,7 +1628,7 @@ async function run() {
         ? err.message
         : "שגיאה בטעינת הנתונים. נסו שוב בעוד רגע."
     );
-    setState(State.IDLE);
+    setState(State.SHOWN);
   }
 }
 
@@ -1643,6 +1636,7 @@ async function run() {
 
 let debounceTimer = null;
 let cartCheckTimer = null;
+let lastUrl = window.location.href;
 
 function scheduleRun() {
   runVersion += 1;
@@ -1652,12 +1646,22 @@ function scheduleRun() {
   debounceTimer = setTimeout(run, 300);
 }
 
+function scheduleRunIfUrlChanged() {
+  const currentUrl = window.location.href;
+  if (currentUrl === lastUrl) return;
+  lastUrl = currentUrl;
+  lastCartSignature = null;
+  scheduleRun();
+}
+
 function scheduleCartCheck() {
   if (state === State.DISMISSED) return;
+  if (window.location.hostname.includes("carrefour.co.il") && state === State.SHOWN) return;
 
   clearTimeout(cartCheckTimer);
   cartCheckTimer = setTimeout(async () => {
-    if (state === State.DISMISSED || !isCartPage()) return;
+    if (state === State.DISMISSED || state === State.LOADING || !isCartPage()) return;
+    if (window.location.hostname.includes("carrefour.co.il") && state === State.SHOWN) return;
 
     if (!cartItemsPresent()) {
       if (lastCartSignature !== null) {
@@ -1679,15 +1683,20 @@ function scheduleCartCheck() {
 (function patchHistory() {
   const _push    = history.pushState.bind(history);
   const _replace = history.replaceState.bind(history);
-  history.pushState    = function (...args) { _push(...args);    scheduleRun(); };
-  history.replaceState = function (...args) { _replace(...args); scheduleRun(); };
+  history.pushState    = function (...args) { _push(...args);    scheduleRunIfUrlChanged(); };
+  history.replaceState = function (...args) { _replace(...args); scheduleRunIfUrlChanged(); };
 })();
 
-window.addEventListener("popstate", scheduleRun);
+window.addEventListener("popstate", scheduleRunIfUrlChanged);
 
-let lastUrl = window.location.href;
+const observer = new MutationObserver((mutations) => {
+  if (mutations.every((mutation) => {
+    const target = mutation.target instanceof Element ? mutation.target : mutation.target?.parentElement;
+    return target?.closest?.(`#${WIDGET_ID}`);
+  })) {
+    return;
+  }
 
-const observer = new MutationObserver(() => {
   const currentUrl = window.location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
