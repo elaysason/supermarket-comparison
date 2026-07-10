@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import sys
 
 from app.db.repository import SupabaseRepository
 from app.scrapers.base import FileType, PriceUpdateStrategy
@@ -15,6 +16,8 @@ def main(force_full: bool = False):
 
     repo = SupabaseRepository()
     summary = []
+    warnings = []
+    failures = []
     for scraper in scrapers:
         logger.info("Processing scraper for %s", scraper.chain_name)
 
@@ -39,25 +42,34 @@ def main(force_full: bool = False):
         scraper.reset_file_cache()
 
         if not scraper.online_store:
+            reason = "no online store set"
             logger.error("No online store set. Skipping %s.", scraper.chain_name)
+            failures.append((scraper.chain_name, reason))
             continue
 
         compare_store_code = repo.get_compare_store_code(scraper.chain_code)
         if not compare_store_code:
+            reason = "no compare store configured"
             logger.error(
                 "No compare store configured for %s (%s). Skipping.",
                 scraper.chain_name,
                 scraper.chain_code,
             )
+            failures.append((scraper.chain_name, reason))
             continue
 
         if compare_store_code != scraper.online_store:
+            reason = (
+                f"online store {scraper.online_store} does not match "
+                f"compare store {compare_store_code}"
+            )
             logger.error(
                 "Online store %s for %s does not match compare store %s. Skipping.",
                 scraper.online_store,
                 scraper.chain_name,
                 compare_store_code,
             )
+            failures.append((scraper.chain_name, reason))
             continue
 
         # 2. Determine file type / fallback behavior
@@ -130,12 +142,24 @@ def main(force_full: bool = False):
             scraper.reset_file_cache()
 
         if selected_file_type is not None:
+            skipped = getattr(scraper, "last_parse_skipped", 0)
+            if skipped:
+                failures.append(
+                    (
+                        scraper.chain_name,
+                        f"{skipped} item rows skipped during parse",
+                    )
+                )
+                continue
+
             if selected_file_type == FileType.PRICE_FULL and not prices:
+                reason = "full price file parsed zero prices"
                 logger.error(
                     "Full price file for %s parsed zero prices. Skipping freshness "
                     "update to avoid marking stale data as fresh.",
                     scraper.chain_name,
                 )
+                failures.append((scraper.chain_name, reason))
                 continue
 
             # 4. Upsert products first (prices FK depends on products)
@@ -155,19 +179,35 @@ def main(force_full: bool = False):
                     items_imported=len(prices),
                 )
             else:
+                reason = "could not record import freshness"
                 logger.warning(
                     "Could not record import freshness for %s from %s.",
                     scraper.chain_name,
                     file_path,
                 )
-            skipped = getattr(scraper, "last_parse_skipped", 0)
+                warnings.append((scraper.chain_name, reason))
             summary.append((scraper.chain_name, len(products), skipped))
         else:
+            reason = "no usable price file found"
             logger.warning("No usable price file found for %s.", scraper.chain_name)
+            failures.append((scraper.chain_name, reason))
 
     print("\n=== Scraping Summary ===")
     for name, count, skipped in summary:
         print(f"  {name:<12}  {count} items upserted, {skipped} skipped")
+
+    if warnings:
+        print("\n=== Scrape Warnings ===")
+        for name, reason in warnings:
+            print(f"  {name}: {reason}")
+
+    if failures:
+        print("\n=== Scrape Failures ===")
+        for name, reason in failures:
+            print(f"  {name} skipped: {reason}")
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
@@ -183,4 +223,4 @@ if __name__ == "__main__":
         ),
     )
     args = parser.parse_args()
-    main(force_full=args.force_full)
+    sys.exit(main(force_full=args.force_full))

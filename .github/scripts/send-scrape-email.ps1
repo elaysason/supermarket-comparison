@@ -58,26 +58,45 @@ $summaryText = if ($logPath) {
 $zeroItemLines = @($summaryText -split [Environment]::NewLine | Where-Object {
   $_ -match "^\s+\S.*\s+0 items upserted,"
 })
-$hasZeroItemWarning = $env:SCRAPE_STATUS -eq "success" -and $zeroItemLines.Count -gt 0
-$alertText = if ($hasZeroItemWarning) {
-  "WARNING: successful scrape reported zero items for: $($zeroItemLines -join '; ')"
+$warningLines = @($summaryText -split [Environment]::NewLine | Where-Object {
+  $_ -match "^\s+(?!.* skipped:).+: .+"
+})
+$failureLines = @($summaryText -split [Environment]::NewLine | Where-Object {
+  $_ -match "^\s+.+ skipped: .+"
+})
+$hasScrapeDataWarning = $zeroItemLines.Count -gt 0 -or $warningLines.Count -gt 0 -or $failureLines.Count -gt 0
+$warningParts = @(
+  if ($zeroItemLines.Count -gt 0) {
+    "zero items reported for: $($zeroItemLines -join '; ')"
+  }
+  if ($warningLines.Count -gt 0) {
+    "warnings: $($warningLines -join '; ')"
+  }
+  if ($failureLines.Count -gt 0) {
+    "chains skipped: $($failureLines -join '; ')"
+  }
+)
+$alertText = if ($hasScrapeDataWarning) {
+  "WARNING: scrape data warnings detected: $($warningParts -join ' | ')"
 } else {
   "No scrape data warnings detected."
 }
-$subjectPrefix = if ($hasZeroItemWarning) {
+$subjectPrefix = if ($env:SCRAPE_STATUS -ne "success") {
+  "[Sal Kal] Scrape $($env:SCRAPE_STATUS)"
+} elseif ($hasScrapeDataWarning) {
   "[Sal Kal] Scrape warning"
 } else {
   "[Sal Kal] Scrape $($env:SCRAPE_STATUS)"
 }
 $subject = "$subjectPrefix - run $($env:GITHUB_RUN_NUMBER)"
-$statusColor = if ($env:SCRAPE_STATUS -eq "success" -and -not $hasZeroItemWarning) {
+$statusColor = if ($env:SCRAPE_STATUS -eq "success" -and -not $hasScrapeDataWarning) {
   "#15803d"
 } elseif ($env:SCRAPE_STATUS -eq "success") {
   "#b45309"
 } else {
   "#b91c1c"
 }
-$statusLabel = if ($hasZeroItemWarning) {
+$statusLabel = if ($env:SCRAPE_STATUS -eq "success" -and $hasScrapeDataWarning) {
   "warning"
 } else {
   $env:SCRAPE_STATUS
