@@ -12,7 +12,6 @@
     "*://*.rami-levy.co.il/*",
     "*://*.yochananof.co.il/*",
     "*://*.hazi-hinam.co.il/*",
-    "*://*.carrefour.co.il/*",
     "https://supermarket-comparison-api-649951889970.europe-west1.run.app/*"
   ],
   "content_scripts": [
@@ -21,8 +20,7 @@
         "*://*.shufersal.co.il/*",
         "*://*.rami-levy.co.il/*",
         "*://*.yochananof.co.il/*",
-        "*://*.hazi-hinam.co.il/*",
-        "*://*.carrefour.co.il/*"
+        "*://*.hazi-hinam.co.il/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],
@@ -49,15 +47,13 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "icons/sal_kal_v1-cropped.png",
-        "carrefour-bridge.js"
+        "icons/sal_kal_v1-cropped.png"
       ],
       "matches": [
         "*://*.shufersal.co.il/*",
         "*://*.rami-levy.co.il/*",
         "*://*.yochananof.co.il/*",
-        "*://*.hazi-hinam.co.il/*",
-        "*://*.carrefour.co.il/*"
+        "*://*.hazi-hinam.co.il/*"
       ]
     }
   ]

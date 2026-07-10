@@ -30,12 +30,6 @@ const SUPPORTED_STORES = [
     url: "https://shop.hazi-hinam.co.il/",
     cartUrl: "https://shop.hazi-hinam.co.il/checkout/cart",
   },
-  {
-    domain: "carrefour.co.il",
-    name: "קרפור",
-    url: "https://www.carrefour.co.il/",
-    cartUrl: "https://www.carrefour.co.il/cart",
-  },
 ];
 
 const SUPPORTED_DOMAINS = SUPPORTED_STORES.map((store) => store.domain);

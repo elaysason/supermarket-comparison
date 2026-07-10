@@ -33,10 +33,6 @@ const CHAINS = {
     chain_code: "7290700100008",
     chain_name: "חצי חינם",
   },
-  "carrefour.co.il": {
-    chain_code: "7290055700007",
-    chain_name: "קרפור",
-  },
 
 };
 
@@ -67,7 +63,6 @@ let domNames = {};       // barcode → display name from cart page
 let domQuantities = {};  // barcode → integer quantity (default 1)
 let lastCartSignature = null;
 let runVersion = 0;
-let carrefourBridgeReady = null;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -115,43 +110,6 @@ function isHaziHinamCartView() {
   });
 }
 
-function isCarrefourCartView() {
-  if (!window.location.hostname.includes("carrefour.co.il")) return false;
-  const url = (window.location.pathname + window.location.hash + window.location.search).toLowerCase();
-  return /cart|checkout|basket|עגלה|קופה/.test(url);
-}
-
-function isVisibleElement(el) {
-  const rect = el.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
-}
-
-function getCarrefourCartScopes() {
-  return Array.from(document.querySelectorAll(
-    'section[aria-label="עגלת קניות"], section.cart, #sidenav-cart-collapsible, [class*="cart"], [class*="basket"], [class*="checkout"], [data-testid*="cart"], [data-test*="cart"]'
-  )).filter(isVisibleElement);
-}
-
-function isIgnoredCarrefourCartNode(node) {
-  return Boolean(node.closest?.(
-    '.empty-cart-smart-list, .previous-orders, footer, [class*="recommend"], [class*="suggest"]'
-  ));
-}
-
-function getCarrefourCartRows() {
-  const scopes = getCarrefourCartScopes();
-
-  const rows = new Set();
-  scopes.forEach((scope) => {
-    scope.querySelectorAll(
-      'article, li, [role="listitem"], [class*="cart-line"], [class*="line-item"], [class*="cart-item"], [class*="basket-item"], [class*="product"]'
-    ).forEach((row) => {
-      if (isVisibleElement(row) && !isIgnoredCarrefourCartNode(row)) rows.add(row);
-    });
-  });
-  return Array.from(rows);
-}
-
 function isCartPage() {
   if (window.location.hostname.includes("yochananof.co.il")) {
     return isYochananofCartView();
@@ -159,10 +117,6 @@ function isCartPage() {
   if (window.location.hostname.includes("hazi-hinam.co.il")) {
     return isHaziHinamCartView();
   }
-  if (window.location.hostname.includes("carrefour.co.il")) {
-    return isCarrefourCartView();
-  }
-
   const url = (window.location.pathname + window.location.hash + window.location.search).toLowerCase();
   return /cart|checkout|basket|dashboard|order|עגלה|קופה/.test(url);
 }
@@ -352,59 +306,6 @@ function buildCartSignature(barcodes, quantities) {
     .join("|");
 }
 
-function ensureCarrefourBridgeInjected() {
-  if (!window.location.hostname.includes("carrefour.co.il")) {
-    return Promise.resolve();
-  }
-  if (carrefourBridgeReady) return carrefourBridgeReady;
-
-  carrefourBridgeReady = new Promise((resolve) => {
-    const existing = document.getElementById("cart-sniper-carrefour-bridge");
-    if (existing) {
-      resolve();
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "cart-sniper-carrefour-bridge";
-    script.src = chrome.runtime.getURL("carrefour-bridge.js");
-    script.onload = () => resolve();
-    script.onerror = () => resolve();
-    (document.head || document.documentElement).appendChild(script);
-  });
-
-  return carrefourBridgeReady;
-}
-
-function getCarrefourCartFromBridge(timeoutMs = 3000) {
-  return new Promise((resolve) => {
-    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const timer = setTimeout(() => {
-      window.removeEventListener("message", onMessage);
-      resolve([]);
-    }, timeoutMs);
-
-    function onMessage(event) {
-      if (event.source !== window) return;
-      const message = event.data;
-      if (!message || message.source !== "cart-sniper-carrefour-bridge") return;
-      if (message.type !== "CARREFOUR_CART" || message.requestId !== requestId) return;
-      clearTimeout(timer);
-      window.removeEventListener("message", onMessage);
-      resolve(Array.isArray(message.items) ? message.items : []);
-    }
-
-    ensureCarrefourBridgeInjected().then(() => {
-      window.addEventListener("message", onMessage);
-      window.postMessage({
-        source: "cart-sniper-content",
-        type: "GET_CARREFOUR_CART",
-        requestId,
-      }, "*");
-    });
-  });
-}
-
 async function collectCartSnapshot({ log = true } = {}) {
   const barcodes = new Set();
   const names = {};
@@ -444,74 +345,6 @@ async function collectCartSnapshot({ log = true } = {}) {
     }
 
     return null;
-  }
-
-  function registerFirstImageBarcode(row) {
-    const images = row.querySelectorAll('img[src], img[srcset]');
-    for (const img of images) {
-      const candidates = [img.currentSrc, img.getAttribute("src"), img.getAttribute("srcset")];
-      const code = candidates.map(extractCodeFromImageSource).find(Boolean);
-      if (code) {
-        register(code, row);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  if (hostname.includes("carrefour.co.il")) {
-    const bridgeItems = await getCarrefourCartFromBridge();
-    bridgeItems.forEach((item) => {
-      if (!item.barcode || !/^\d{4,14}$/.test(item.barcode)) return;
-      barcodes.add(item.barcode);
-      quantities[item.barcode] = (quantities[item.barcode] || 0) + Math.max(1, item.quantity || 1);
-      if (item.name && !names[item.barcode]) names[item.barcode] = item.name;
-    });
-
-    if (bridgeItems.length > 0) {
-      const snapshot = {
-        barcodes: Array.from(barcodes),
-        names,
-        quantities,
-      };
-      snapshot.signature = buildCartSignature(snapshot.barcodes, snapshot.quantities);
-      if (log) {
-        console.log(`[CartSniper] extractBarcodes() found ${snapshot.barcodes.length} barcode(s):`, snapshot.barcodes);
-        console.log("[CartSniper] quantities:", snapshot.quantities);
-        console.log("[CartSniper] DOM names:", snapshot.names);
-      }
-      return snapshot;
-    }
-
-    getCarrefourCartRows().forEach((row) => {
-      const attrs = [
-        "data-barcode", "data-sku", "data-item-barcode", "data-product-barcode",
-        "data-itemcode", "data-product-id", "data-product-code",
-      ];
-      for (const attr of attrs) {
-        const node = row.matches(`[${attr}]`) ? row : row.querySelector(`[${attr}]`);
-        if (node) {
-          addCode(node.getAttribute(attr), row);
-          return;
-        }
-      }
-
-      if (registerFirstImageBarcode(row)) return;
-
-      const link = row.querySelector('a[href*="product"], a[href*="/p/"], a[href*="/item/"]');
-      const match = (link?.getAttribute("href") || "").match(/[/\-_](\d{7,14})(?:[/?#]|$)/);
-      if (match) register(match[1], row);
-    });
-
-    if (barcodes.size === 0) {
-      getCarrefourCartScopes().forEach((scope) => {
-        scope.querySelectorAll('img[src], img[srcset]').forEach((img) => {
-          if (isIgnoredCarrefourCartNode(img)) return;
-          const row = img.closest('article, li, [role="listitem"], [class*="item"], [class*="product"]') || img.parentElement;
-          registerFirstImageBarcode(row || img);
-        });
-      });
-    }
   }
 
   // Strategy 1 (Shufersal): article.miglog-incart[data-product-code]
@@ -577,7 +410,7 @@ async function collectCartSnapshot({ log = true } = {}) {
   // matched anything — i.e. we're on Yohananof or an unknown site layout.
   // Running them unconditionally causes false positives on Shufersal/Rami Levi
   // where promotions, recommendations, and coupons also carry numeric IDs.
-  if (barcodes.size === 0 && !hostname.includes("carrefour.co.il")) {
+  if (barcodes.size === 0) {
 
     // Strategy 3 (Yohananof / generic): common data attributes
     for (const attr of [
@@ -655,10 +488,6 @@ function cartItemsPresent() {
   if (window.location.hostname.includes("yochananof.co.il")) {
     return isYochananofCartView();
   }
-  if (window.location.hostname.includes("carrefour.co.il")) {
-    return isCarrefourCartView() && getCarrefourCartScopes().length > 0;
-  }
-
   if (document.querySelectorAll("article.miglog-incart[data-product-code]").length > 0) return true;
   if (document.querySelectorAll("article[data-product-code]").length > 0) return true;
   if (document.querySelectorAll('input[name="productCodePost"]').length > 0) return true;
@@ -1528,6 +1357,13 @@ async function fetchComparison(chainCode, barcodes, quantities) {
       reject(new Error("Extension background request timed out."));
     }, 20000);
 
+    console.log("[CartSniper] Sending compare request:", {
+      source_chain_code: chainCode,
+      barcodes,
+      quantities,
+      item_names: domNames,
+    });
+
     chrome.runtime.sendMessage(
       {
         type: "COMPARE_CART",
@@ -1539,13 +1375,16 @@ async function fetchComparison(chainCode, barcodes, quantities) {
       (response) => {
         clearTimeout(timeout);
         if (chrome.runtime.lastError) {
+          console.error("[CartSniper] Background message failed:", chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
           return;
         }
         if (!response?.ok) {
+          console.error("[CartSniper] Background compare failed:", response);
           reject(new Error(response?.error || "Unknown error from background"));
           return;
         }
+        console.log("[CartSniper] Compare response:", response.data);
         resolve(response.data);
       }
     );
@@ -1604,12 +1443,6 @@ async function run() {
     );
     if (runId !== runVersion || state !== State.LOADING) return;
 
-    if (window.location.hostname.includes("carrefour.co.il")) {
-      showResultWidget(data);
-      setState(State.SHOWN);
-      return;
-    }
-
     const latestSnapshot = await collectCartSnapshot({ log: false });
     if (latestSnapshot.signature !== snapshot.signature) {
       lastCartSignature = latestSnapshot.signature;
@@ -1656,12 +1489,10 @@ function scheduleRunIfUrlChanged() {
 
 function scheduleCartCheck() {
   if (state === State.DISMISSED) return;
-  if (window.location.hostname.includes("carrefour.co.il") && state === State.SHOWN) return;
 
   clearTimeout(cartCheckTimer);
   cartCheckTimer = setTimeout(async () => {
     if (state === State.DISMISSED || state === State.LOADING || !isCartPage()) return;
-    if (window.location.hostname.includes("carrefour.co.il") && state === State.SHOWN) return;
 
     if (!cartItemsPresent()) {
       if (lastCartSignature !== null) {
