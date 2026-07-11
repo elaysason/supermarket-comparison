@@ -32,7 +32,7 @@ class CarrefourScraper(CommonXMLScraper):
     # Regex to pull the JSON array out of  ``const files = [...]``
     _FILES_RE = re.compile(r"const\s+files\s*=\s*(\[.*?\])\s*;", re.DOTALL)
 
-    _EXPECTED_STORE_ID = "5304"
+    _EXPECTED_STORE_ID = "471"
     _EXPECTED_STORE_NAME_MARKER = "קרפור אונליין"
 
     def __init__(self):
@@ -40,20 +40,24 @@ class CarrefourScraper(CommonXMLScraper):
             chain_name="Carrefour",
             chain_code="7290055700007",
             base_url="https://prices.carrefour.co.il",
-            default_store_id=self._EXPECTED_STORE_ID,
         )
+        self._cached_file_type: Optional[FileType] = None
+
+    def reset_file_cache(self) -> None:
+        super().reset_file_cache()
+        self._cached_file_type = None
 
     def find_online_store(self, stores_file: str, store_type: str = "2"):
         """Find the main Carrefour online store from the Stores XML.
 
-        Carrefour has multiple StoreType=2 entries (5204 "Quick", 5304 main
-        online, 9032 Bitan).  The base implementation picks the first match
-        (5204) which is a small subset (~1000 items).
+        Carrefour has multiple StoreType=2 entries, including Quick and Bitan
+        stores. The base implementation picks the first match, which can be a
+        small subset instead of the main online store.
 
-        This override looks for store 5304 *and* verifies its name still
-        contains "קרפור אונליין".  If the expected store disappears or is
-        renamed, it falls back to the base class auto-discovery and logs a
-        warning so the change is noticed.
+        This override looks for store 471 *and* verifies its name still
+        contains "קרפור אונליין". If the expected store disappears or is
+        renamed, it returns None so the scraper skips Carrefour clearly rather
+        than importing prices for a different online store.
         """
         try:
             context = ET.iterparse(stores_file, events=("end",))
@@ -93,11 +97,12 @@ class CarrefourScraper(CommonXMLScraper):
 
         logger.warning(
             "Expected Carrefour online store %s with name containing '%s' "
-            "not found. Falling back to auto-discovery.",
+            "not found.",
             self._EXPECTED_STORE_ID,
             self._EXPECTED_STORE_NAME_MARKER,
         )
-        return super().find_online_store(stores_file, store_type)
+        self._online_store_id = None
+        return None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -165,6 +170,14 @@ class CarrefourScraper(CommonXMLScraper):
         pattern = re.compile(rf"\b{re.escape(category)}(?![a-zA-Z])", re.IGNORECASE)
         return pattern.search(filename) is not None
 
+    @staticmethod
+    def _extract_file_timestamp(filename: str) -> str:
+        matches = re.findall(r"(\d{8})[-_]?(\d{4,6})(?!\d)", filename)
+        if not matches:
+            return ""
+        date_part, time_part = matches[-1]
+        return f"{date_part}{time_part.ljust(6, '0')}"
+
     def _filter_files(
         self,
         files: List[dict],
@@ -209,14 +222,24 @@ class CarrefourScraper(CommonXMLScraper):
 
             {base_url}/{YYYYMMDD}/{filename}
         """
-        if self._cached_file_url:
-            return self._cached_file_url
-
         logger.info(
             "Fetching latest %s file URL for store %s...",
             file_type.value,
             self._online_store_id,
         )
+
+        if file_type != FileType.STORES and not self._online_store_id:
+            logger.warning(
+                "Carrefour online store was not verified; refusing to fetch %s.",
+                file_type.value,
+            )
+            return None
+
+        if self._cached_file_url and self._cached_file_type == file_type:
+            return self._cached_file_url
+
+        if self._cached_file_url:
+            self.reset_file_cache()
 
         try:
             today = date.today().strftime("%Y%m%d")
@@ -244,12 +267,15 @@ class CarrefourScraper(CommonXMLScraper):
                 )
                 return None
 
-            # Pick the first file (list is already sorted by modified date on
-            # the server side, newest first).
+            filtered.sort(
+                key=lambda item: self._extract_file_timestamp(item.get("name", "")),
+                reverse=True,
+            )
             chosen = filtered[0]
             download_url = f"{self._base_url}/{today}/{chosen['name']}"
 
             self._cached_file_url = download_url
+            self._cached_file_type = file_type
             logger.info("Found latest %s URL: %s", file_type.value, download_url)
             return download_url
 

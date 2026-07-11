@@ -27,6 +27,10 @@ class YohananofScraper(CommonXMLScraper):
         self._authenticated = False
         self._csrf_token: Optional[str] = None
 
+    @property
+    def missing_price_file_is_expected(self) -> bool:
+        return True
+
     def _authenticate(self) -> bool:
         """Extracts the CSRF token and submits the POST login payload."""
         if self._authenticated:
