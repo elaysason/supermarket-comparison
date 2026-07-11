@@ -25,10 +25,6 @@ const CHAINS = {
     chain_code: "7290058140886",
     chain_name: "רמי לוי",
   },
-  "yochananof.co.il": {
-    chain_code: "7290803800003",
-    chain_name: "יוחננוף",
-  },
   "hazi-hinam.co.il": {
     chain_code: "7290700100008",
     chain_name: "חצי חינם",
