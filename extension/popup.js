@@ -19,12 +19,6 @@ const SUPPORTED_STORES = [
     cartUrl: "https://www.rami-levy.co.il/he/online/cart",
   },
   {
-    domain: "yochananof.co.il",
-    name: "יוחננוף",
-    url: "https://www.yochananof.co.il/",
-    cartUrl: "https://www.yochananof.co.il/?openPopups=cart",
-  },
-  {
     domain: "hazi-hinam.co.il",
     name: "חצי חינם",
     url: "https://shop.hazi-hinam.co.il/",

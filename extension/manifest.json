@@ -10,7 +10,6 @@
   "host_permissions": [
     "*://*.shufersal.co.il/*",
     "*://*.rami-levy.co.il/*",
-    "*://*.yochananof.co.il/*",
     "*://*.hazi-hinam.co.il/*",
     "https://supermarket-comparison-api-649951889970.europe-west1.run.app/*"
   ],
@@ -19,7 +18,6 @@
       "matches": [
         "*://*.shufersal.co.il/*",
         "*://*.rami-levy.co.il/*",
-        "*://*.yochananof.co.il/*",
         "*://*.hazi-hinam.co.il/*"
       ],
       "js": ["content.js"],
@@ -52,7 +50,6 @@
       "matches": [
         "*://*.shufersal.co.il/*",
         "*://*.rami-levy.co.il/*",
-        "*://*.yochananof.co.il/*",
         "*://*.hazi-hinam.co.il/*"
       ]
     }
