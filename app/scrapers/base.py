@@ -39,6 +39,10 @@ class BaseScraper(ABC):
         return PriceUpdateStrategy.DELTA_WITH_FULL_FALLBACK
 
     @property
+    def missing_price_file_is_expected(self) -> bool:
+        return False
+
+    @property
     def item_tag_name(self) -> str:
         """Override this if the XML structure uses a different tag for items."""
         return "Product"

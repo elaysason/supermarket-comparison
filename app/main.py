@@ -190,7 +190,10 @@ def main(force_full: bool = False):
         else:
             reason = "no usable price file found"
             logger.warning("No usable price file found for %s.", scraper.chain_name)
-            failures.append((scraper.chain_name, reason))
+            if scraper.missing_price_file_is_expected:
+                warnings.append((scraper.chain_name, reason))
+            else:
+                failures.append((scraper.chain_name, reason))
 
     print("\n=== Scraping Summary ===")
     for name, count, skipped in summary:
