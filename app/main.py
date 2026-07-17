@@ -144,13 +144,12 @@ def main(force_full: bool = False):
         if selected_file_type is not None:
             skipped = getattr(scraper, "last_parse_skipped", 0)
             if skipped:
-                failures.append(
+                warnings.append(
                     (
                         scraper.chain_name,
                         f"{skipped} item rows skipped during parse",
                     )
                 )
-                continue
 
             if selected_file_type == FileType.PRICE_FULL and not prices:
                 reason = "full price file parsed zero prices"
