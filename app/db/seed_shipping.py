@@ -43,14 +43,14 @@ CREATE TABLE IF NOT EXISTS shipping_costs (
 
 # Each tuple: (chain_code, option_type, fee, free_above, min_order, notes)
 SEED_DATA = [
-    # Shufersal — delivery flat ₪30, no free threshold
+    # Shufersal — delivery flat ₪35.90, no free threshold
     (
         "7290027600007",
         "delivery",
-        30.0,
+        35.9,
         None,
         None,
-        "משלוח עד הבית ₪30",
+        "משלוח עד הבית ₪35.90",
     ),
     # Shufersal — pickup ₪15 under ₪750, ₪10 at ₪750+
     # We store the lower tier fee; the backend picks the right one based on cart total.

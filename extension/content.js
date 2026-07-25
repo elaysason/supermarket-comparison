@@ -728,8 +728,8 @@ function getFreshnessPillClass(chains, lastUpdated) {
 }
 
 function getBlockedChainText(chain) {
-  if (chain.status === "blocked_stale") return "נתוני המחירים ישנים מדי ולכן הרשת לא נכללה בהשוואה.";
-  return "אין כרגע נתוני מחירים עדכניים ולכן הרשת לא נכללה בהשוואה.";
+  if (chain.status === "blocked_stale") return "מחירים ישנים מדי";
+  return "אין מחירים עדכניים";
 }
 
 function getRecommendationBlockMarkup(status, matchedCount, totalCount) {
@@ -1247,14 +1247,9 @@ function showResultWidget(data) {
     const blockedRowsHtml = blocked_chains.map((chain) => {
       const updatedText = formatDateTime(chain.last_updated);
       return `
-        <div class="cs-chain-row cs-chain-unavailable">
-          <div class="cs-chain-top">
-            <div class="cs-chain-heading">
-              <span class="cs-chain-name">${escapeHtml(toDisplayChainName(chain.chain_name))}</span>
-              <div class="cs-chain-badges"><span class="cs-chain-badge cs-chain-badge-unavailable">לא נכללה</span></div>
-            </div>
-          </div>
-          <div class="cs-chain-supporting">${getBlockedChainText(chain)}${updatedText ? ` עדכון אחרון: ${escapeHtml(updatedText)}` : ""}</div>
+        <div class="cs-blocked-chain"${updatedText ? ` title="עדכון אחרון: ${escapeHtml(updatedText)}"` : ""}>
+          <span class="cs-blocked-chain-name">${escapeHtml(toDisplayChainName(chain.chain_name))}</span>
+          <span class="cs-blocked-chain-reason">${getBlockedChainText(chain)}</span>
         </div>`;
     }).join("");
     const detailsChainName = cheapest_chain?.chain_name || lowestItemsChain?.chain_name;
@@ -1306,7 +1301,7 @@ function showResultWidget(data) {
         ${sourceRowHtml ? `<div class="cs-section-label">העגלה שלך</div><div class="cs-chains">${sourceRowHtml}</div>` : ""}
         ${chains.length > 0 ? `<div class="cs-section-label">רשתות להשוואה</div>
         <div class="cs-chains">${chainRowsHtml}</div>` : ""}
-        ${blockedRowsHtml ? `<div class="cs-section-label">רשתות שלא נכללו</div><div class="cs-chains">${blockedRowsHtml}</div>` : ""}
+        ${blockedRowsHtml ? `<div class="cs-section-label">לא נכללו</div><div class="cs-blocked-chains">${blockedRowsHtml}</div>` : ""}
         ${items.length > 0 ? `
         <details class="cs-details">
           <summary class="cs-details-toggle">${detailsLabel}</summary>
