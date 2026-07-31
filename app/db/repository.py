@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Any, Dict, Generator, List
 
@@ -114,18 +115,28 @@ _pool_max_size = _positive_int_env("DATABASE_POOL_MAX_SIZE", 3) or 3
 if _pool_min_size > _pool_max_size:
     raise ValueError("DATABASE_POOL_MIN_SIZE must be <= DATABASE_POOL_MAX_SIZE")
 
-_pool = ConnectionPool(
-    _build_conninfo(),
-    min_size=_pool_min_size,
-    max_size=_pool_max_size,
-    kwargs=_connection_kwargs(),
-)
+_pool: ConnectionPool | None = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = ConnectionPool(
+                    _build_conninfo(),
+                    min_size=_pool_min_size,
+                    max_size=_pool_max_size,
+                    kwargs=_connection_kwargs(),
+                )
+    return _pool
 
 
 class SupabaseRepository:
     def ping(self) -> None:
         """Run a minimal query to verify database connectivity."""
-        with _pool.connection(timeout=5) as conn:
+        with _get_pool().connection(timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 cur.fetchone()
@@ -145,7 +156,7 @@ class SupabaseRepository:
             WHERE chain_code = %s
         """
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_code,))
                     row = cur.fetchone()
@@ -163,7 +174,7 @@ class SupabaseRepository:
             );
         """
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_code, store_code))
                     return cur.fetchone()[0]
@@ -180,7 +191,7 @@ class SupabaseRepository:
                 name = EXCLUDED.name;
         """
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(upsert_query, (chain_code, name))
                 conn.commit()
@@ -198,7 +209,7 @@ class SupabaseRepository:
                 store_name = EXCLUDED.store_name;
         """
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         upsert_query,
@@ -243,7 +254,7 @@ class SupabaseRepository:
         """
 
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(products):
                         data_tuples = [
@@ -289,7 +300,7 @@ class SupabaseRepository:
         """
 
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(prices):
                         data_tuples = [
@@ -351,7 +362,7 @@ class SupabaseRepository:
         """
 
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     for chunk in self._chunk_data(prices):
                         data_tuples = [
@@ -412,7 +423,7 @@ class SupabaseRepository:
         """
 
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         upsert_query,
@@ -455,7 +466,7 @@ class SupabaseRepository:
         """
         result: Dict[str, Any] = {}
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query)
                     for (
@@ -507,7 +518,7 @@ class SupabaseRepository:
         """
         result: Dict[str, Any] = {}
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (chain_codes,))
                     for (
@@ -548,7 +559,7 @@ class SupabaseRepository:
         query = "SELECT barcode, product_name FROM products WHERE barcode = ANY(%s)"
         result: Dict[str, str] = {}
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (barcodes,))
                     for barcode, product_name in cur.fetchall():
@@ -580,7 +591,7 @@ class SupabaseRepository:
 
         candidates: list[tuple[str, str]] = []
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (source_chain_code,))
                     candidates = [(barcode, name) for barcode, name in cur.fetchall()]
@@ -648,7 +659,7 @@ class SupabaseRepository:
 
         results: Dict[str, Any] = {}
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(query, (source_chain_code, barcodes))
                     rows = cur.fetchall()
@@ -722,7 +733,7 @@ class SupabaseRepository:
         results: Dict[str, Any] = {}
 
         try:
-            with _pool.connection() as conn:
+            with _get_pool().connection() as conn:
                 with conn.cursor() as cur:
                     params: tuple[Any, ...] = (source_chain_code, barcodes)
                     if chain_codes is not None:

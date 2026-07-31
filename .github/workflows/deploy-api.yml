@@ -40,6 +40,9 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
+      - name: Test
+        run: uv run pytest
+
       - name: Validate deploy configuration
         run: |
           test -n "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" || (echo "Missing secret: GCP_WORKLOAD_IDENTITY_PROVIDER" && exit 1)

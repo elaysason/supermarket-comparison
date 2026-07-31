@@ -264,12 +264,12 @@ def compare_cart(
         )
     if any(len(barcode) > MAX_BARCODE_LENGTH for barcode in original_barcodes):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"Barcode length must be at most {MAX_BARCODE_LENGTH} characters.",
         )
     if any(quantity > MAX_ITEM_QUANTITY for quantity in request.quantities.values()):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"Item quantity must be at most {MAX_ITEM_QUANTITY}.",
         )
 

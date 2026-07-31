@@ -20,6 +20,13 @@ dependencies = [
     "ruff>=0.15.0",
     "uvicorn>=0.34.0",
 ]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.0",
+]
+
 [tool.ruff]
 line-length = 88
 
@@ -30,3 +37,7 @@ ignore = ["E203"]
 [tool.black]
 line-length = 88
 target-version = ['py38']
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
