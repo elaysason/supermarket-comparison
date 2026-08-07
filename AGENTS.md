@@ -25,7 +25,7 @@
 - Prefer small, direct changes over broad rewrites.
 - Preserve existing module boundaries unless a refactor is explicitly requested.
 - Keep scraper logic chain-specific under `app/scrapers/chains/` and shared behavior in `app/scrapers/common.py` or `app/scrapers/base.py`.
-- Before commiting use @claude-reviewer agent to check
+- Before committing, invoke the reviewer from the opposite model family (Claude session -> `gpt-reviewer`, GPT session -> `claude-reviewer`, otherwise default to `gpt-reviewer`).
 
 ## Database
 - Use migrations for schema changes under `supabase/migrations/`.
@@ -33,13 +33,12 @@
 - Be careful with destructive DDL or data changes; call out risks before applying them.
 
 ## Verification
-- For Python changes, run at least `uv run ruff check .` when feasible.
-- Run `uv run black .` after editing Python files unless the change is trivial and already formatted.
+- For Python changes, run `uv run ruff check .` and relevant tests (`uv run pytest`) when feasible.
+- Format only changed Python files with Black unless the change is trivial and already formatted.
 - For extension changes, manually inspect `extension/manifest.json`, `extension/popup.html`, and related JS for consistency.
-- for running the scrapping run `uv run python -m app.main --force-full` use --force-full for full load and without it for delta 
+- To run the scraper use `uv run python -m app.main`; add `--force-full` for a full load and omit it for a delta. This writes data, so confirm the target environment before running.
 
 ## Collaboration
 - Do not revert user changes unless explicitly asked.
 - If the working tree has unrelated modifications, leave them alone.
 - Before large edits, inspect the relevant files and make the smallest correct change.
-- ALWAYS inspect and make the smallest changes to achive the desired goal
