@@ -13,16 +13,16 @@ const SUPPORTED_STORES = [
     cartUrl: "https://www.shufersal.co.il/online/he/cart",
   },
   {
-    domain: "rami-levy.co.il",
-    name: "רמי לוי",
-    url: "https://www.rami-levy.co.il/",
-    cartUrl: "https://www.rami-levy.co.il/he/online/cart",
-  },
-  {
     domain: "hazi-hinam.co.il",
     name: "חצי חינם",
     url: "https://shop.hazi-hinam.co.il/",
     cartUrl: "https://shop.hazi-hinam.co.il/checkout/cart",
+  },
+  {
+    domain: "rami-levy.co.il",
+    name: "רמי לוי",
+    url: "https://www.rami-levy.co.il/he",
+    cartUrl: "https://www.rami-levy.co.il/he/dashboard/checkout",
   },
 ];
 
