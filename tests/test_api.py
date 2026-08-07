@@ -119,6 +119,53 @@ def test_compare_includes_quantities_and_delivery_fees(monkeypatch):
     assert [item["competitor_price"] for item in body["items"]] == [10.0, 7.7]
 
 
+class LowCoverageRepository(FakeRepository):
+    """Competitor covers only 1 of 3 cart barcodes → low_coverage."""
+
+    def get_competitor_prices(self, source_chain_code, barcodes, chain_codes):
+        return {
+            RAMI_LEVI: {
+                "chain_name": "Rami Levi",
+                "items": {
+                    "111": {"product_name": "Product 111", "price": 10.0},
+                },
+            }
+        }
+
+    def get_source_prices(self, source_chain_code, barcodes):
+        return {
+            SHUFERSAL: {
+                "chain_name": "Shufersal",
+                "items": {
+                    "111": {"product_name": "Product 111", "price": 13.9},
+                },
+            }
+        }
+
+
+def test_low_coverage_still_returns_item_breakdown(monkeypatch):
+    monkeypatch.setattr(api, "SupabaseRepository", LowCoverageRepository)
+    monkeypatch.setattr(api, "ALLOWED_EXTENSION_ORIGINS", {"chrome-extension://test"})
+    response = TestClient(api.app).post(
+        "/api/compare",
+        headers={"Origin": "chrome-extension://test"},
+        json={
+            "source_chain_code": SHUFERSAL,
+            "barcodes": ["111", "222", "333"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recommendation_status"] == "low_coverage"
+    assert body["cheapest_chain"] is None
+    # The per-item breakdown is still present so the user sees which item matched.
+    assert len(body["items"]) == 3
+    matched = {item["barcode"]: item["matched"] for item in body["items"]}
+    assert matched == {"111": True, "222": False, "333": False}
+    assert body["items_pricing_chain"]["chain_code"] == RAMI_LEVI
+
+
 def test_compare_rejects_unrecognised_origin(monkeypatch):
     response = client(monkeypatch).post(
         "/api/compare",

@@ -1119,6 +1119,7 @@ function showResultWidget(data) {
     items = [],
     chains = [],
     blocked_chains = [],
+    items_pricing_chain = null,
   } = data;
 
   // Always present the active chain in the widget. When the API returns no
@@ -1252,7 +1253,7 @@ function showResultWidget(data) {
           <span class="cs-blocked-chain-reason">${getBlockedChainText(chain)}</span>
         </div>`;
     }).join("");
-    const detailsChainName = cheapest_chain?.chain_name || lowestItemsChain?.chain_name;
+    const detailsChainName = items_pricing_chain?.chain_name || cheapest_chain?.chain_name || lowestItemsChain?.chain_name;
     const detailsLabel = detailsChainName
       ? `פריטים מול ${escapeHtml(toDisplayChainName(detailsChainName))}`
       : "פירוט פריטים";

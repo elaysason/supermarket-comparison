@@ -35,6 +35,19 @@ class CheapestChain(BaseModel):
     total_price: float
 
 
+class PricingChain(BaseModel):
+    """Identifies the chain a per-item breakdown is priced against.
+
+    Unlike CheapestChain, total_price is optional because the fallback
+    pricing chain on low-coverage carts may have no available order total.
+    """
+
+    chain_code: str
+    chain_name: str
+    items_total: float
+    total_price: Optional[float] = None
+
+
 class ShippingOption(BaseModel):
     option_type: str = Field(..., description="'delivery' or 'pickup'")
     fee: float = Field(
@@ -167,5 +180,13 @@ class CompareResponse(BaseModel):
     )
     items: List[ItemResult] = Field(
         default_factory=list,
-        description="Per-item breakdown against the cheapest chain.",
+        description="Per-item breakdown against the items pricing chain.",
+    )
+    items_pricing_chain: Optional[PricingChain] = Field(
+        None,
+        description=(
+            "The chain the per-item breakdown is priced against. Equals "
+            "cheapest_chain when a recommendation is shown; otherwise the "
+            "fallback chain used to price matched items on low-coverage carts."
+        ),
     )

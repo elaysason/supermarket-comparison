@@ -15,6 +15,7 @@ from app.api.models import (
     CompareResponse,
     BlockedChain,
     ItemResult,
+    PricingChain,
     ShippingOption,
 )
 from app.db.repository import SupabaseRepository
@@ -612,14 +613,28 @@ def compare_cart(
     )
 
     items: list[ItemResult] = []
-    if cheapest:
-        logger.info(
-            "Cheapest available competitor: %s (₪%.2f)",
-            cheapest.chain_name,
-            cheapest.order_total,
+    # Pricing chain for the per-item breakdown. Prefer the cheapest available
+    # competitor when a recommendation is shown; otherwise fall back to the
+    # competitor covering the most common barcodes so the user can still see
+    # which items matched (and at what price) even on low-coverage carts.
+    pricing_chain_code: str | None = cheapest.chain_code if cheapest else None
+    if pricing_chain_code is None and common_barcodes and chain_results:
+        pricing_chain_code = max(
+            (chain.chain_code for chain in chain_results),
+            key=lambda code: sum(
+                1 for b in common_barcodes if b in competitor_data[code]["items"]
+            ),
         )
 
-        cheapest_items = competitor_data[cheapest.chain_code]["items"]
+    if pricing_chain_code is not None:
+        if cheapest:
+            logger.info(
+                "Cheapest available competitor: %s (₪%.2f)",
+                cheapest.chain_name,
+                cheapest.order_total,
+            )
+
+        cheapest_items = competitor_data[pricing_chain_code]["items"]
         for barcode in barcodes:
             q = qty(barcode)
             if barcode in common_barcodes and barcode in cheapest_items:
@@ -649,7 +664,23 @@ def compare_cart(
                     )
                 )
     else:
-        logger.info("No competitor has an available fulfillment option for this cart.")
+        logger.info("No competitor items available for the per-item breakdown.")
+
+    # Expose which chain the per-item breakdown is priced against so the UI can
+    # label it correctly, especially on low-coverage carts where cheapest_chain
+    # is None and the fallback chain may differ from the lowest-basket chain.
+    items_pricing_chain: PricingChain | None = None
+    if pricing_chain_code is not None:
+        priced = next(
+            (c for c in chain_results if c.chain_code == pricing_chain_code), None
+        )
+        if priced:
+            items_pricing_chain = PricingChain(
+                chain_code=priced.chain_code,
+                chain_name=priced.chain_name,
+                total_price=priced.order_total,
+                items_total=priced.items_total,
+            )
 
     return CompareResponse(
         recommendation_status=recommendation_status,
@@ -672,6 +703,7 @@ def compare_cart(
         chains=chain_results,
         blocked_chains=blocked_chains,
         items=items,
+        items_pricing_chain=items_pricing_chain,
     )
 
 
