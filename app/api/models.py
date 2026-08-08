@@ -87,6 +87,17 @@ class ChainResult(BaseModel):
         ),
     )
     matched_count: int
+    total_count: int = Field(
+        0,
+        description="Number of barcodes in the target comparison cart.",
+    )
+    is_complete: bool = Field(
+        True,
+        description=(
+            "True when this chain covers every barcode in the target cart. "
+            "Partial chains are shown separately and never ranked as cheapest."
+        ),
+    )
     status: Literal[
         "available",
         "stale_warning",

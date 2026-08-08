@@ -416,19 +416,31 @@ def compare_cart(
         barcodes=comparable_barcodes,
     )
 
-    # Build the common barcode set. When the source chain has reliable price
-    # data, require the source and every displayed competitor to share the same
-    # barcodes. When the source feed is missing (for example Yohananof online
-    # store 150), fall back to the requested cart barcodes and compare only the
-    # overlap across competitors.
+    # Target comparison cart: the set of barcodes we try to price everywhere.
+    # When the source chain has reliable price data, the target is the source's
+    # priced cart. Otherwise (source feed missing, e.g. Yohananof store 150) we
+    # fall back to the requested comparable barcodes.
+    #
+    # Each competitor is then matched INDEPENDENTLY against this target set:
+    #   - a chain is "complete" when it covers every target barcode,
+    #   - "partial" when it covers some (shown separately, never ranked cheapest),
+    #   - irrelevant when it covers none (dropped from the comparison).
+    # This avoids collapsing the comparable set to the lowest common denominator
+    # across all chains, which made carts with differing catalogs uncomparable.
     src = source_data.get(request.source_chain_code)
-    src_barcodes_raw = set(src["items"].keys()) if src else set(comparable_barcodes)
+    target_barcodes = set(src["items"].keys()) if src else set(comparable_barcodes)
+    target_count = len(target_barcodes)
 
-    common_barcodes = set(src_barcodes_raw)
-    for chain in competitor_data.values():
-        common_barcodes &= set(chain["items"].keys())
+    def chain_matched_barcodes(chain_items: dict) -> set[str]:
+        return {b for b in target_barcodes if b in chain_items}
 
-    if not common_barcodes:
+    relevant_competitors = {
+        chain_code: chain
+        for chain_code, chain in competitor_data.items()
+        if chain_matched_barcodes(chain["items"])
+    }
+
+    if not target_barcodes or not relevant_competitors:
         src_total = (
             round(sum(item["price"] * qty(b) for b, item in src["items"].items()), 2)
             if src
@@ -455,7 +467,9 @@ def compare_cart(
                 chain_name=src["chain_name"],
                 items_total=src_total,
                 order_total=_best_available_order_total(src_total, src_shipping),
-                matched_count=0,
+                matched_count=target_count,
+                total_count=target_count,
+                is_complete=True,
                 shipping=src_shipping,
                 status=source_freshness_status,
                 last_updated=source_import_status.get("source_file_date"),
@@ -489,12 +503,12 @@ def compare_cart(
         )
 
     def chain_items_total(chain_items: dict) -> float:
-        """Sum price × qty for barcodes in the common comparable set only."""
+        """Sum price × qty for this chain's matched target barcodes only."""
         return round(
             sum(
                 item["price"] * qty(b)
                 for b, item in chain_items.items()
-                if b in common_barcodes
+                if b in target_barcodes
             ),
             2,
         )
@@ -520,16 +534,17 @@ def compare_cart(
 
     # Build competitor totals first so we can choose one common fulfillment mode
     competitor_totals: list[dict] = []
-    for chain_code, chain in competitor_data.items():
+    for chain_code, chain in relevant_competitors.items():
         cart_total = chain_items_total(chain["items"])
-        matched_in_common = sum(1 for b in common_barcodes if b in chain["items"])
+        matched = len(chain_matched_barcodes(chain["items"]))
         shipping = make_shipping(chain_code, cart_total)
         competitor_totals.append(
             {
                 "chain_code": chain_code,
                 "chain_name": chain["chain_name"],
                 "items_total": cart_total,
-                "matched_count": matched_in_common,
+                "matched_count": matched,
+                "is_complete": matched == target_count,
                 "shipping": shipping,
                 "status": _freshness_status(
                     compare_statuses[chain_code].get("source_file_date")
@@ -538,9 +553,9 @@ def compare_cart(
             }
         )
 
-    # Build source ChainResult — total restricted to the common comparable set
+    # Build source ChainResult — total over the full target cart.
     src_total = (
-        round(sum(src["items"][b]["price"] * qty(b) for b in common_barcodes), 2)
+        round(sum(src["items"][b]["price"] * qty(b) for b in target_barcodes), 2)
         if src
         else 0.0
     )
@@ -550,8 +565,14 @@ def compare_cart(
     source_shipping = make_shipping(
         request.source_chain_code, src_total if src else 0.0
     )
+    # Only complete competitors (covering the whole target cart) should drive
+    # the fulfillment-mode choice, so a partial chain can't force a mode that
+    # makes the only complete competitor look unavailable.
+    complete_competitor_totals = [
+        chain for chain in competitor_totals if chain["is_complete"]
+    ]
     comparison_option_type = _select_comparison_option_type(
-        source_shipping, competitor_totals
+        source_shipping, complete_competitor_totals or competitor_totals
     )
 
     # Build competitor ChainResults using the selected common fulfillment mode
@@ -568,6 +589,8 @@ def compare_cart(
                     comparison_option_type,
                 ),
                 matched_count=chain["matched_count"],
+                total_count=target_count,
+                is_complete=chain["is_complete"],
                 shipping=chain["shipping"],
                 status=chain["status"],
                 last_updated=chain["last_updated"],
@@ -583,7 +606,9 @@ def compare_cart(
                 source_shipping,
                 comparison_option_type,
             ),
-            matched_count=len(common_barcodes),
+            matched_count=target_count,
+            total_count=target_count,
+            is_complete=True,
             shipping=source_shipping,
             status=source_freshness_status,
             last_updated=source_import_status.get("source_file_date"),
@@ -592,19 +617,36 @@ def compare_cart(
         else None
     )
 
+    # A recommendation needs the source plus at least one competitor that fully
+    # covers the target cart. Distinguish two "can't recommend" reasons:
+    #   - not_enough_chains: too little data overall (no relevant competitor).
+    #   - low_coverage: we have competitors, but none covers the whole cart
+    #     (only partial alternatives exist).
+    complete_chains = [
+        chain
+        for chain in [source_chain_result, *chain_results]
+        if chain and chain.is_complete
+    ]
+    complete_competitors = [chain for chain in chain_results if chain.is_complete]
+    best_competitor_coverage = max(
+        (chain.matched_count for chain in chain_results), default=0
+    )
+    coverage = _coverage_status(best_competitor_coverage, target_count)
+    recommendation_status = "available"
+    if not chain_results:
+        recommendation_status = "not_enough_chains"
+    elif not complete_competitors or len(complete_chains) < 2:
+        recommendation_status = "low_coverage"
+
     all_available_chains = [
         chain for chain in [source_chain_result, *chain_results] if chain
     ]
-    coverage = _coverage_status(len(common_barcodes), len(original_barcodes))
-    recommendation_status = "available"
-    if len(all_available_chains) < 2:
-        recommendation_status = "not_enough_chains"
-    elif coverage == "low_coverage":
-        recommendation_status = "low_coverage"
 
-    # Cheapest competitor = lowest currently available order total.
+    # Cheapest competitor = lowest available order total among COMPLETE chains.
     eligible_chain_results = [
-        chain for chain in chain_results if chain.order_total is not None
+        chain
+        for chain in chain_results
+        if chain.order_total is not None and chain.is_complete
     ]
     cheapest = (
         min(eligible_chain_results, key=lambda c: c.order_total)
@@ -615,14 +657,14 @@ def compare_cart(
     items: list[ItemResult] = []
     # Pricing chain for the per-item breakdown. Prefer the cheapest available
     # competitor when a recommendation is shown; otherwise fall back to the
-    # competitor covering the most common barcodes so the user can still see
-    # which items matched (and at what price) even on low-coverage carts.
+    # competitor covering the most target barcodes so the user can still see
+    # which items matched (and at what price).
     pricing_chain_code: str | None = cheapest.chain_code if cheapest else None
-    if pricing_chain_code is None and common_barcodes and chain_results:
+    if pricing_chain_code is None and target_barcodes and chain_results:
         pricing_chain_code = max(
             (chain.chain_code for chain in chain_results),
-            key=lambda code: sum(
-                1 for b in common_barcodes if b in competitor_data[code]["items"]
+            key=lambda code: len(
+                chain_matched_barcodes(competitor_data[code]["items"])
             ),
         )
 
@@ -637,7 +679,7 @@ def compare_cart(
         cheapest_items = competitor_data[pricing_chain_code]["items"]
         for barcode in barcodes:
             q = qty(barcode)
-            if barcode in common_barcodes and barcode in cheapest_items:
+            if barcode in target_barcodes and barcode in cheapest_items:
                 entry = cheapest_items[barcode]
                 unit = entry["price"]
                 items.append(
@@ -698,7 +740,7 @@ def compare_cart(
             else None
         ),
         source_chain=source_chain_result,
-        matched_count=len(common_barcodes),
+        matched_count=(max((c.matched_count for c in chain_results), default=0)),
         total_count=len(original_barcodes),
         chains=chain_results,
         blocked_chains=blocked_chains,

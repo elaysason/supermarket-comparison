@@ -119,17 +119,19 @@ def test_compare_includes_quantities_and_delivery_fees(monkeypatch):
     assert [item["competitor_price"] for item in body["items"]] == [10.0, 7.7]
 
 
-class LowCoverageRepository(FakeRepository):
-    """Competitor covers only 1 of 3 cart barcodes → low_coverage."""
+CARREFOUR = "7290055700007"
 
-    def get_competitor_prices(self, source_chain_code, barcodes, chain_codes):
+
+class PartialCoverageRepository(FakeRepository):
+    """Source has 3 items. Carrefour covers all 3 (complete); Rami Levi covers
+    only 2 (partial). Partial chains must not be ranked as cheapest."""
+
+    def get_compare_chain_statuses(self):
+        updated_at = datetime.now(timezone.utc)
         return {
-            RAMI_LEVI: {
-                "chain_name": "Rami Levi",
-                "items": {
-                    "111": {"product_name": "Product 111", "price": 10.0},
-                },
-            }
+            SHUFERSAL: {"chain_name": "Shufersal", "source_file_date": updated_at},
+            RAMI_LEVI: {"chain_name": "Rami Levi", "source_file_date": updated_at},
+            CARREFOUR: {"chain_name": "Carrefour", "source_file_date": updated_at},
         }
 
     def get_source_prices(self, source_chain_code, barcodes):
@@ -138,13 +140,96 @@ class LowCoverageRepository(FakeRepository):
                 "chain_name": "Shufersal",
                 "items": {
                     "111": {"product_name": "Product 111", "price": 13.9},
+                    "222": {"product_name": "Product 222", "price": 5.0},
+                    "333": {"product_name": "Product 333", "price": 8.0},
                 },
             }
         }
 
+    def get_competitor_prices(self, source_chain_code, barcodes, chain_codes):
+        return {
+            CARREFOUR: {
+                "chain_name": "Carrefour",
+                "items": {
+                    "111": {"product_name": "Product 111", "price": 12.0},
+                    "222": {"product_name": "Product 222", "price": 4.5},
+                    "333": {"product_name": "Product 333", "price": 7.0},
+                },
+            },
+            RAMI_LEVI: {
+                "chain_name": "Rami Levi",
+                "items": {
+                    "111": {"product_name": "Product 111", "price": 1.0},
+                    "222": {"product_name": "Product 222", "price": 1.0},
+                },
+            },
+        }
 
-def test_low_coverage_still_returns_item_breakdown(monkeypatch):
-    monkeypatch.setattr(api, "SupabaseRepository", LowCoverageRepository)
+    def get_shipping_costs(self, chain_codes):
+        opt = {
+            "option_type": "delivery",
+            "fee": 0.0,
+            "notes": "Delivery",
+            "min_order": None,
+            "free_above": None,
+        }
+        return {chain_code: [opt] for chain_code in chain_codes}
+
+
+def test_partial_chain_is_not_ranked_but_shown(monkeypatch):
+    monkeypatch.setattr(api, "SupabaseRepository", PartialCoverageRepository)
+    monkeypatch.setattr(api, "ALLOWED_EXTENSION_ORIGINS", {"chrome-extension://test"})
+    response = TestClient(api.app).post(
+        "/api/compare",
+        headers={"Origin": "chrome-extension://test"},
+        json={
+            "source_chain_code": SHUFERSAL,
+            "barcodes": ["111", "222", "333"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    # Carrefour covers all 3 items and is cheaper than the source, so it wins.
+    assert body["recommendation_status"] == "available"
+    assert body["cheapest_chain"]["chain_code"] == CARREFOUR
+    # Rami Levi covers only 2/3: shown but flagged incomplete and never cheapest.
+    chains = {c["chain_code"]: c for c in body["chains"]}
+    assert chains[CARREFOUR]["is_complete"] is True
+    assert chains[CARREFOUR]["matched_count"] == 3
+    assert chains[RAMI_LEVI]["is_complete"] is False
+    assert chains[RAMI_LEVI]["matched_count"] == 2
+    assert chains[RAMI_LEVI]["total_count"] == 3
+    # Full per-item breakdown, priced against the winning complete chain.
+    assert len(body["items"]) == 3
+    assert all(item["matched"] for item in body["items"])
+    assert body["items_pricing_chain"]["chain_code"] == CARREFOUR
+
+
+class PartialOnlyRepository(PartialCoverageRepository):
+    """No competitor fully covers the 3-item cart → low_coverage, no cheapest,
+    but partial chains are still returned for display."""
+
+    def get_competitor_prices(self, source_chain_code, barcodes, chain_codes):
+        return {
+            CARREFOUR: {
+                "chain_name": "Carrefour",
+                "items": {
+                    "111": {"product_name": "Product 111", "price": 12.0},
+                    "222": {"product_name": "Product 222", "price": 4.5},
+                },
+            },
+            RAMI_LEVI: {
+                "chain_name": "Rami Levi",
+                "items": {
+                    "111": {"product_name": "Product 111", "price": 1.0},
+                },
+            },
+        }
+
+
+def test_partial_only_cart_is_low_coverage(monkeypatch):
+    monkeypatch.setattr(api, "SupabaseRepository", PartialOnlyRepository)
     monkeypatch.setattr(api, "ALLOWED_EXTENSION_ORIGINS", {"chrome-extension://test"})
     response = TestClient(api.app).post(
         "/api/compare",
@@ -159,11 +244,11 @@ def test_low_coverage_still_returns_item_breakdown(monkeypatch):
     body = response.json()
     assert body["recommendation_status"] == "low_coverage"
     assert body["cheapest_chain"] is None
-    # The per-item breakdown is still present so the user sees which item matched.
+    chains = {c["chain_code"]: c for c in body["chains"]}
+    assert chains[CARREFOUR]["is_complete"] is False
+    assert chains[RAMI_LEVI]["is_complete"] is False
+    # The item breakdown still shows which items matched at the best-covered chain.
     assert len(body["items"]) == 3
-    matched = {item["barcode"]: item["matched"] for item in body["items"]}
-    assert matched == {"111": True, "222": False, "333": False}
-    assert body["items_pricing_chain"]["chain_code"] == RAMI_LEVI
 
 
 def test_compare_rejects_unrecognised_origin(monkeypatch):

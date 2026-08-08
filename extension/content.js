@@ -1144,15 +1144,19 @@ function showResultWidget(data) {
       </div>
     `;
   } else {
-    const lowestItemsChain = getLowestItemsChain(effectiveSourceChain, chains);
-    const lowestOrderableChain = chains.length > 0
-      ? [...chains]
+    // Only complete chains (covering the whole cart) may be ranked; partial
+    // chains are shown separately and must never win a "cheapest" summary.
+    // When the source has no real prices, exclude its synthetic stub (items_total
+    // 0) from ranking so a competitor-only comparison can still be recommended.
+    const rankableChains = chains.filter((chain) => chain.is_complete !== false);
+    const rankingSource = sourceIsUnavailable ? null : effectiveSourceChain;
+    const lowestItemsChain = getLowestItemsChain(rankingSource, rankableChains);
+    const lowestOrderableChain = rankableChains.length > 0
+      ? [...rankableChains]
         .filter((chain) => chain.order_total != null)
         .sort((a, b) => a.order_total - b.order_total)[0] || null
       : null;
-    const cheapestOverallChain = sourceIsUnavailable
-      ? null
-      : getCheapestOverallChain(effectiveSourceChain, chains);
+    const cheapestOverallChain = getCheapestOverallChain(rankingSource, rankableChains);
     const visibleChains = [effectiveSourceChain, ...chains].filter(Boolean);
     const blockedSummaryHtml = getRecommendationBlockMarkup(recommendation_status, matched_count, total_count);
     const summaryHtml = blockedSummaryHtml || (cheapestOverallChain
@@ -1161,7 +1165,7 @@ function showResultWidget(data) {
     const freshnessPillHtml = `<span class="${getFreshnessPillClass(visibleChains, overall_last_updated)}" title="${escapeHtml(getFreshnessText(overall_last_updated))}">${escapeHtml(getFreshnessShortText(overall_last_updated))}</span>`;
 
     function renderChainRow(chain, options = {}) {
-      const { isSource = false, isOverallCheapest = false } = options;
+      const { isSource = false, isOverallCheapest = false, isPartial = false } = options;
       const displayModel = getChainDisplayModel(
         chain,
         comparison_option_type,
@@ -1175,12 +1179,17 @@ function showResultWidget(data) {
         isOverallCheapest ? "cs-chain-cheapest" : "",
         isSource ? "cs-chain-source" : "",
         isUnavailable ? "cs-chain-unavailable" : "",
+        isPartial ? "cs-chain-partial" : "",
       ].filter(Boolean).join(" ");
       const isBlockedChain = chain.status === "blocked_stale" || chain.status === "no_data";
+      const coverageBadge = isPartial && chain.total_count
+        ? `<span class="cs-chain-badge cs-chain-badge-unavailable">${chain.matched_count}/${chain.total_count} פריטים</span>`
+        : "";
       const badges = [
         isOverallCheapest
           ? '<span class="cs-chain-badge cs-chain-badge-cheapest">הכי זול להזמנה</span>'
           : "",
+        coverageBadge,
         chain.status === "stale_strong_warning" ? '<span class="cs-chain-badge cs-chain-badge-unavailable">מחירים ישנים</span>' : "",
         chain.status === "stale_warning" ? '<span class="cs-chain-badge">מחירים לא מהיום</span>' : "",
         isBlockedChain ? `<span class="cs-chain-badge cs-chain-badge-unavailable">${displayModel.badgeText}</span>` : "",
@@ -1240,10 +1249,17 @@ function showResultWidget(data) {
 
       return getDisplayTotal(a) - getDisplayTotal(b);
     });
-    const chainRowsHtml = sortedChains.map((chain) =>
+    // Split into complete chains (cover the whole cart, eligible for ranking)
+    // and partial chains (missing some items — shown separately, never ranked).
+    const completeChains = sortedChains.filter((chain) => chain.is_complete !== false);
+    const partialChains = sortedChains.filter((chain) => chain.is_complete === false);
+    const chainRowsHtml = completeChains.map((chain) =>
       renderChainRow(chain, {
         isOverallCheapest: cheapestOverallChain?.chain_code === chain.chain_code,
       })
+    ).join("");
+    const partialRowsHtml = partialChains.map((chain) =>
+      renderChainRow(chain, { isOverallCheapest: false, isPartial: true })
     ).join("");
     const blockedRowsHtml = blocked_chains.map((chain) => {
       const updatedText = formatDateTime(chain.last_updated);
@@ -1300,8 +1316,10 @@ function showResultWidget(data) {
       <div class="cs-body">
         ${summaryHtml}
         ${sourceRowHtml ? `<div class="cs-section-label">העגלה שלך</div><div class="cs-chains">${sourceRowHtml}</div>` : ""}
-        ${chains.length > 0 ? `<div class="cs-section-label">רשתות להשוואה</div>
+        ${chainRowsHtml ? `<div class="cs-section-label">רשתות להשוואה</div>
         <div class="cs-chains">${chainRowsHtml}</div>` : ""}
+        ${partialRowsHtml ? `<div class="cs-section-label">חלופות חלקיות (חסרים פריטים)</div>
+        <div class="cs-chains">${partialRowsHtml}</div>` : ""}
         ${blockedRowsHtml ? `<div class="cs-section-label">לא נכללו</div><div class="cs-blocked-chains">${blockedRowsHtml}</div>` : ""}
         ${items.length > 0 ? `
         <details class="cs-details">

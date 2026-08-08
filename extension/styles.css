@@ -524,6 +524,11 @@
   opacity: 0.9;
 }
 
+.cs-chain-partial {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
 .cs-chain-supporting {
   margin-top: 8px;
   padding-top: 8px;
