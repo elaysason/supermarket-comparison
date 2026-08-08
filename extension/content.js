@@ -1196,8 +1196,11 @@ function showResultWidget(data) {
         !isBlockedChain && !isSource && displayModel.badgeText ? `<span class="cs-chain-badge cs-chain-badge-unavailable">${displayModel.badgeText}</span>` : "",
       ].filter(Boolean).join("");
       const badgesHtml = badges ? `<div class="cs-chain-badges">${badges}</div>` : "";
+      const supportingPlain = supportingText
+        ? supportingText.replace(/<[^>]*>/g, "").replace(/&#x20AA;/g, "₪").replace(/&amp;/g, "&")
+        : "";
       const supportingHtml = supportingText
-        ? `<div class="cs-chain-supporting">${supportingText}</div>`
+        ? `<div class="cs-chain-supporting" title="${escapeHtml(supportingPlain)}">${supportingText.split(" · ")[0]}</div>`
         : "";
 
       const totalWrapHtml = displayModel.total != null
@@ -1221,10 +1224,24 @@ function showResultWidget(data) {
     }
 
     // ── Source chain row (current store, shown above competitors) ──────────
-    const sourceRowHtml = effectiveSourceChain
+    // Skip it only when the summary card itself presents the source as the
+    // winner (source name + total already shown there). This must NOT trigger on
+    // blocked/low-coverage summaries or on ties, where the summary doesn't show
+    // the source total — otherwise the current chain's info would be lost.
+    const sourceWinnerTotal = effectiveSourceChain?.order_total ?? null;
+    const bestCompetitorTotal = (cheapest_chain?.total_price ?? cheapest_chain?.order_total) ?? null;
+    const sourceStrictlyWins =
+      bestCompetitorTotal == null ||
+      (sourceWinnerTotal != null && sourceWinnerTotal - bestCompetitorTotal < -0.005);
+    const sourceIsSummaryWinner =
+      !blockedSummaryHtml &&
+      cheapestOverallChain?.chain_code === effectiveSourceChain?.chain_code &&
+      sourceWinnerTotal != null &&
+      sourceStrictlyWins;
+    const sourceRowHtml = effectiveSourceChain && !sourceIsSummaryWinner
       ? renderChainRow(effectiveSourceChain, {
         isSource: true,
-        isOverallCheapest: cheapestOverallChain?.chain_code === effectiveSourceChain.chain_code,
+        isOverallCheapest: false,
       })
       : "";
 
@@ -1318,8 +1335,11 @@ function showResultWidget(data) {
         ${sourceRowHtml ? `<div class="cs-section-label">העגלה שלך</div><div class="cs-chains">${sourceRowHtml}</div>` : ""}
         ${chainRowsHtml ? `<div class="cs-section-label">רשתות להשוואה</div>
         <div class="cs-chains">${chainRowsHtml}</div>` : ""}
-        ${partialRowsHtml ? `<div class="cs-section-label">חלופות חלקיות (חסרים פריטים)</div>
-        <div class="cs-chains">${partialRowsHtml}</div>` : ""}
+        ${partialRowsHtml ? `
+        <details class="cs-details cs-partial-details">
+          <summary class="cs-details-toggle">חלופות חלקיות (${partialChains.length}) · חסרים פריטים</summary>
+          <div class="cs-chains">${partialRowsHtml}</div>
+        </details>` : ""}
         ${blockedRowsHtml ? `<div class="cs-section-label">לא נכללו</div><div class="cs-blocked-chains">${blockedRowsHtml}</div>` : ""}
         ${items.length > 0 ? `
         <details class="cs-details">

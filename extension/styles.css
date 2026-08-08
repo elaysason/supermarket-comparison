@@ -577,6 +577,10 @@
   padding-top: 10px;
 }
 
+.cs-partial-details .cs-chains {
+  margin-top: 8px;
+}
+
 .cs-details-toggle {
   font-family: var(--cs-font);
   display: flex;
