@@ -103,11 +103,12 @@ def _build_conninfo() -> str:
     )
 
 
-def _connection_kwargs() -> dict[str, str]:
+def _connection_kwargs() -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"prepare_threshold": None}
     timeout_ms = _positive_int_env("DATABASE_STATEMENT_TIMEOUT_MS")
-    if timeout_ms is None:
-        return {}
-    return {"options": f"-c statement_timeout={timeout_ms}"}
+    if timeout_ms is not None:
+        kwargs["options"] = f"-c statement_timeout={timeout_ms}"
+    return kwargs
 
 
 _pool_min_size = _positive_int_env("DATABASE_POOL_MIN_SIZE", 1) or 1
