@@ -59,25 +59,26 @@ $zeroItemLines = @($summaryText -split [Environment]::NewLine | Where-Object {
   $_ -match "^\s+\S.*\s+0 items upserted,"
 })
 $warningLines = @($summaryText -split [Environment]::NewLine | Where-Object {
-  $_ -match "^\s+(?!.* skipped:).+: .+"
+  $_ -match "^\s+(?!.*\s0 items upserted,)(?!.* skipped:).+: .+"
 })
 $failureLines = @($summaryText -split [Environment]::NewLine | Where-Object {
   $_ -match "^\s+.+ skipped: .+"
 })
 $hasScrapeDataWarning = $zeroItemLines.Count -gt 0 -or $warningLines.Count -gt 0 -or $failureLines.Count -gt 0
-$warningParts = @(
-  if ($zeroItemLines.Count -gt 0) {
-    "zero items reported for: $($zeroItemLines -join '; ')"
+$warningDetails = @(
+  foreach ($line in $zeroItemLines) {
+    "Zero items: $($line.Trim())"
   }
-  if ($warningLines.Count -gt 0) {
-    "warnings: $($warningLines -join '; ')"
+  foreach ($line in $warningLines) {
+    $line.Trim()
   }
-  if ($failureLines.Count -gt 0) {
-    "chains skipped: $($failureLines -join '; ')"
+  foreach ($line in $failureLines) {
+    "Chain skipped: $($line.Trim())"
   }
 )
 $alertText = if ($hasScrapeDataWarning) {
-  "WARNING: scrape data warnings detected: $($warningParts -join ' | ')"
+  $warningLabel = if ($warningDetails.Count -eq 1) { "warning" } else { "warnings" }
+  "$($warningDetails.Count) scrape $warningLabel detected. Review the details below."
 } else {
   "No scrape data warnings detected."
 }
@@ -129,6 +130,15 @@ $encodedLogsUrl = [System.Net.WebUtility]::HtmlEncode($env:SCRAPE_LOGS_URL)
 $encodedSummary = [System.Net.WebUtility]::HtmlEncode($summaryText)
 $encodedFullLog = [System.Net.WebUtility]::HtmlEncode($fullLogText)
 $encodedAlert = [System.Net.WebUtility]::HtmlEncode($alertText)
+$warningHtml = if ($hasScrapeDataWarning) {
+  $items = ($warningDetails | ForEach-Object {
+    $encodedDetail = [System.Net.WebUtility]::HtmlEncode($_)
+    "<li style=`"margin:6px 0;`">$encodedDetail</li>"
+  }) -join [Environment]::NewLine
+  "<div style=`"margin-top:16px;padding:12px 16px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;color:#92400e;`"><strong>Warnings</strong><ul style=`"margin:8px 0 0;padding-left:20px;`">$items</ul></div>"
+} else {
+  ""
+}
 
 $body = @"
 <!doctype html>
@@ -148,6 +158,7 @@ $body = @"
               <td style="padding:24px 28px;">
                 <div style="display:inline-block;padding:7px 12px;border-radius:999px;background:$statusColor;color:#ffffff;font-weight:700;text-transform:uppercase;font-size:12px;letter-spacing:.06em;">$statusLabel</div>
                 <p style="margin:16px 0 0;font-size:15px;line-height:1.5;color:#334155;">$encodedAlert</p>
+                $warningHtml
 
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:22px;border-collapse:collapse;font-size:14px;">
                   <tr><td style="padding:8px 0;color:#64748b;width:130px;">Repository</td><td style="padding:8px 0;color:#0f172a;">$encodedRepository</td></tr>
