@@ -1,11 +1,10 @@
 {
   "manifest_version": 3,
   "name": "סל קל",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "משווה את סל הקניות שלך בין רשתות נתמכות ומראה איפה משתלם יותר להזמין.",
   "permissions": [
-    "activeTab",
-    "storage"
+    "activeTab"
   ],
   "host_permissions": [
     "*://*.shufersal.co.il/*",
