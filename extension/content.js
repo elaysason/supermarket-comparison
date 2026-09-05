@@ -47,7 +47,6 @@ const State = { IDLE: "idle", WAITING: "waiting", LOADING: "loading", SHOWN: "sh
 let state = State.IDLE;
 
 function setState(next) {
-  console.log(`[CartSniper] ${state} → ${next}`);
   state = next;
 }
 
@@ -302,7 +301,7 @@ function buildCartSignature(barcodes, quantities) {
     .join("|");
 }
 
-async function collectCartSnapshot({ log = true } = {}) {
+async function collectCartSnapshot() {
   const barcodes = new Set();
   const names = {};
   const quantities = {};
@@ -447,23 +446,6 @@ async function collectCartSnapshot({ log = true } = {}) {
   };
   snapshot.signature = buildCartSignature(snapshot.barcodes, snapshot.quantities);
 
-  if (log) {
-    console.log(`[CartSniper] extractBarcodes() found ${snapshot.barcodes.length} barcode(s):`, snapshot.barcodes);
-    console.log("[CartSniper] quantities:", snapshot.quantities);
-    console.log("[CartSniper] DOM names:", snapshot.names);
-  }
-  if (log && snapshot.barcodes.length === 0) {
-    console.warn(
-      "[CartSniper] No barcodes found. Debug in DevTools:\n" +
-      "  // Shufersal:\n" +
-      "  document.querySelectorAll('article[data-product-code]')\n" +
-      "  // Rami Levi:\n" +
-      "  document.querySelectorAll('button[id^=\"product-\"]')\n" +
-      "  // Yohananof — try:\n" +
-      "  document.querySelectorAll('[data-barcode],[data-sku],[class*=\"cart-item\"]')\n" +
-      "  // Also check img src for _P_<EAN> pattern"
-    );
-  }
   return snapshot;
 }
 
@@ -1387,13 +1369,6 @@ async function fetchComparison(chainCode, barcodes, quantities) {
       reject(new Error("Extension background request timed out."));
     }, 20000);
 
-    console.log("[CartSniper] Sending compare request:", {
-      source_chain_code: chainCode,
-      barcodes,
-      quantities,
-      item_names: domNames,
-    });
-
     chrome.runtime.sendMessage(
       {
         type: "COMPARE_CART",
@@ -1405,16 +1380,15 @@ async function fetchComparison(chainCode, barcodes, quantities) {
       (response) => {
         clearTimeout(timeout);
         if (chrome.runtime.lastError) {
-          console.error("[CartSniper] Background message failed:", chrome.runtime.lastError.message);
+          console.error("[SalKal] Background message failed:", chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
           return;
         }
         if (!response?.ok) {
-          console.error("[CartSniper] Background compare failed:", response);
+          console.error("[SalKal] Comparison failed:", response?.error || "Unknown error");
           reject(new Error(response?.error || "Unknown error from background"));
           return;
         }
-        console.log("[CartSniper] Compare response:", response.data);
         resolve(response.data);
       }
     );
@@ -1440,7 +1414,6 @@ async function run() {
   const ready = await waitForCartItems(8000);
   if (runId !== runVersion) return;
   if (!ready) {
-    console.warn("[CartSniper] Cart items did not appear within timeout.");
     lastCartSignature = null;
     setState(State.IDLE);
     return;
@@ -1473,7 +1446,7 @@ async function run() {
     );
     if (runId !== runVersion || state !== State.LOADING) return;
 
-    const latestSnapshot = await collectCartSnapshot({ log: false });
+    const latestSnapshot = await collectCartSnapshot();
     if (latestSnapshot.signature !== snapshot.signature) {
       lastCartSignature = latestSnapshot.signature;
       scheduleRun();
@@ -1484,7 +1457,7 @@ async function run() {
     showResultWidget(data);
     setState(State.SHOWN);
   } catch (err) {
-    console.error("[CartSniper] API call failed:", err);
+    console.error("[SalKal] Comparison request failed:", err);
     if (runId !== runVersion || state !== State.LOADING) return;
     showErrorWidget(
       err instanceof Error
@@ -1532,7 +1505,7 @@ function scheduleCartCheck() {
       return;
     }
 
-    const snapshot = await collectCartSnapshot({ log: false });
+    const snapshot = await collectCartSnapshot();
     if (snapshot.signature !== lastCartSignature) {
       lastCartSignature = snapshot.signature;
       scheduleRun();

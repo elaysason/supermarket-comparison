@@ -23,7 +23,6 @@ async function compareCart(payload) {
   for (const base of API_BASES) {
     const url = `${base}/api/compare`;
     try {
-      console.log("[CartSniper] Calling API:", url);
       const response = await withTimeoutFetch(url, {
         method: "POST",
         headers: {
@@ -39,7 +38,7 @@ async function compareCart(payload) {
 
       return await response.json();
     } catch (error) {
-      console.error("[CartSniper] API request failed:", url, error);
+      console.error("[SalKal] Comparison request failed:", error);
       lastError = error;
       const isTimeout = error?.name === "AbortError";
       const isNetworkFailure = /failed to fetch|networkerror|connection/i.test(
@@ -60,10 +59,6 @@ async function compareCart(payload) {
 
   throw lastError || new Error("Unknown API failure.");
 }
-
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("[CartSniper] Extension installed.");
-});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.type !== "COMPARE_CART") return false;
