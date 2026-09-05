@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="he">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=440, initial-scale=1">
+  <title>סל קל</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html { margin: 0; width: 440px; height: 280px; overflow: hidden; direction: ltr; }
+    body {
+      position: fixed;
+      inset: 0 auto auto 0;
+      margin: 0;
+      width: 440px;
+      height: 280px;
+      overflow: hidden;
+      direction: rtl;
+      font-family: Rubik, Arial, sans-serif;
+      color: #f8fafc;
+      background: #08111f;
+    }
+    .comparison {
+      position: absolute;
+      z-index: 2;
+      right: 13px;
+      top: 15px;
+      width: 168px;
+      height: 250px;
+      padding: 12px;
+      border: 1px solid #324157;
+      border-radius: 11px;
+      background: #0d1728;
+      box-shadow: 0 17px 35px rgba(0, 0, 0, .36);
+    }
+    .comparison-head { display: flex; align-items: center; justify-content: space-between; }
+    .comparison-head img { width: 28px; height: 26px; object-fit: contain; }
+    .updated {
+      padding: 3px 6px;
+      border-radius: 999px;
+      color: #b7f7d0;
+      background: rgba(34, 197, 94, .11);
+      border: 1px solid rgba(34, 197, 94, .18);
+      font-size: 7px;
+      font-weight: 700;
+    }
+    .result {
+      margin-top: 11px;
+      padding: 11px;
+      border: 1px solid rgba(234, 179, 8, .28);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(234,179,8,.07), rgba(15,23,42,.65));
+    }
+    .result small { display: block; color: #7f8da1; font-size: 7px; font-weight: 700; }
+    .result strong { display: block; margin-top: 5px; font-size: 13px; }
+    .price { margin-top: 2px; color: #f2c500; font-size: 21px; font-weight: 800; direction: ltr; text-align: right; }
+    .saving { margin-top: 4px; color: #9eacbe; font-size: 7px; line-height: 1.45; }
+    .chain {
+      margin-top: 8px;
+      padding: 8px 9px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid #2f3e52;
+      border-radius: 7px;
+      color: #d9e2ed;
+      background: #121e31;
+      font-size: 8px;
+      font-weight: 700;
+    }
+    .chain b { color: #f2c500; font-size: 10px; direction: ltr; }
+    .brand {
+      position: absolute;
+      z-index: 3;
+      left: 0;
+      top: 0;
+      width: 252px;
+      height: 280px;
+      padding: 25px 27px 22px;
+      background: linear-gradient(105deg, #08111f 0%, #0a1525 72%, rgba(10,21,37,.92) 100%);
+      box-shadow: 24px 0 38px rgba(8, 17, 31, .42);
+    }
+    .brand-mark { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+    .brand-mark img { width: 56px; height: 51px; object-fit: contain; }
+    .name {
+      font-family: Rubik, Arial, sans-serif;
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -.025em;
+    }
+    .rule { width: 31px; height: 3px; margin: 18px 0 14px auto; border-radius: 2px; background: #20bec5; }
+    h1 { margin: 0; font-size: 23px; line-height: 1.25; letter-spacing: -.035em; }
+    p { margin: 8px 0 0; color: #9fb1c5; font-size: 10.5px; line-height: 1.45; }
+    .cta {
+      position: absolute;
+      right: 28px;
+      bottom: 17px;
+      color: #77e3e4;
+      font-size: 10px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <section class="comparison">
+    <div class="comparison-head"><img src="../extension/icons/sal_kal_v1-cropped.png" alt=""><span class="updated">להמחשה</span></div>
+    <div class="result"><small>הכי זול במשלוח</small><strong>רמי לוי</strong><div class="price">₪53.60</div><div class="saving">חוסך מול הסל הנוכחי, כולל משלוח</div></div>
+    <div class="chain"><span>שופרסל</span><b>₪56.00</b></div>
+    <div class="chain"><span>רמי לוי</span><b>₪53.60</b></div>
+  </section>
+  <main class="brand">
+    <div class="brand-mark"><img src="../extension/icons/sal_kal_v1-cropped.png" alt=""><div class="name">סל קל</div></div>
+    <div class="rule"></div>
+    <h1>כבר בסל?<br>קל להשוות.</h1>
+    <p>השוואת מחירים ישירות<br>מתוך עגלת הקניות.</p>
+    <div class="cta">משווים בין רשתות, בלי לעזוב את העגלה</div>
+  </main>
+</body>
+</html>

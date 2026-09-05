@@ -48,3 +48,11 @@ executable code.
 After `PRIVACY.md` is committed and pushed to the public repository, use:
 
 https://github.com/elaysason/supermarket-comparison/blob/main/PRIVACY.md
+
+## Listing disclaimer
+
+Add this note to the detailed description:
+
+> סל קל הוא שירות עצמאי ואינו קשור, ממומן או מופעל על ידי רשתות המזון
+> המופיעות בתוסף. שמות הרשתות וסימניהן שייכים לבעליהם ומשמשים לזיהוי
+> ולהשוואת מחירים בלבד.
