@@ -38,7 +38,7 @@ async function compareCart(payload) {
 
       return await response.json();
     } catch (error) {
-      console.error("[SalKal] Comparison request failed:", error);
+      console.error("[SalNavon] Comparison request failed:", error);
       lastError = error;
       const isTimeout = error?.name === "AbortError";
       const isNetworkFailure = /failed to fetch|networkerror|connection/i.test(

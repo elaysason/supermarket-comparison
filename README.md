@@ -1,6 +1,8 @@
-# Sal Kal / Supermarket Comparison
+# Sal Navon / סל נבון
 
-Sal Kal helps shoppers compare an online grocery cart against supported Israeli
+אותו סל, פחות כסף.
+
+Sal Navon helps shoppers compare an online grocery cart against supported Israeli
 supermarket chains and see where the same barcode-matched cart is cheaper,
 including delivery or pickup fees when data is available.
 
@@ -23,7 +25,7 @@ barcodes and quantities from supported supermarket sites. The API compares the
 cart against configured online stores for competitor chains and returns the
 cheapest available option.
 
-Comparison is barcode-based. Sal Kal does not guess substitutions. Items that do
+Comparison is barcode-based. Sal Navon does not guess substitutions. Items that do
 not exist in the shared matched set are returned as unmatched.
 
 Shipping and pickup costs are included when the chain has configured shipping

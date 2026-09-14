@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "סל קל",
-  "version": "1.1.0",
+  "name": "סל נבון",
+  "version": "1.1.1",
   "description": "משווה את סל הקניות שלך בין רשתות נתמכות ומראה איפה משתלם יותר להזמין.",
   "permissions": [
     "activeTab"
@@ -29,7 +29,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "סל קל",
+    "default_title": "סל נבון",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -44,7 +44,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "icons/sal_kal_v1-cropped.png"
+        "icons/sal-navon.png"
       ],
       "matches": [
         "*://*.shufersal.co.il/*",

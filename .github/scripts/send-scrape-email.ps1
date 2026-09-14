@@ -83,11 +83,11 @@ $alertText = if ($hasScrapeDataWarning) {
   "No scrape data warnings detected."
 }
 $subjectPrefix = if ($env:SCRAPE_STATUS -ne "success") {
-  "[Sal Kal] Scrape $($env:SCRAPE_STATUS)"
+  "[Sal Navon] Scrape $($env:SCRAPE_STATUS)"
 } elseif ($hasScrapeDataWarning) {
-  "[Sal Kal] Scrape warning"
+  "[Sal Navon] Scrape warning"
 } else {
-  "[Sal Kal] Scrape $($env:SCRAPE_STATUS)"
+  "[Sal Navon] Scrape $($env:SCRAPE_STATUS)"
 }
 $subject = "$subjectPrefix - run $($env:GITHUB_RUN_NUMBER)"
 $statusColor = if ($env:SCRAPE_STATUS -eq "success" -and -not $hasScrapeDataWarning) {
@@ -150,7 +150,7 @@ $body = @"
           <table role="presentation" width="1040" cellspacing="0" cellpadding="0" style="width:1040px;max-width:96%;background:#ffffff;border:1px solid #d9e2ec;border-radius:14px;overflow:hidden;">
             <tr>
               <td style="padding:24px 28px;background:#0f172a;color:#ffffff;">
-                <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;">Sal Kal scraper</div>
+                <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;">Sal Navon scraper</div>
                 <div style="font-size:24px;font-weight:700;margin-top:6px;">Scrape completed</div>
               </td>
             </tr>

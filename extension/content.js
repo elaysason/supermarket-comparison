@@ -542,7 +542,7 @@ const HEBREW_CHAIN_NAMES = {
 };
 
 function getLogoMarkup() {
-  return `<img class="cs-logo" src="${chrome.runtime.getURL("icons/sal_kal_v1-cropped.png")}" alt="סל קל">`;
+  return `<img class="cs-logo" src="${chrome.runtime.getURL("icons/sal-navon.png")}" alt="סל נבון">`;
 }
 
 function toDisplayChainName(name) {
@@ -1380,12 +1380,12 @@ async function fetchComparison(chainCode, barcodes, quantities) {
       (response) => {
         clearTimeout(timeout);
         if (chrome.runtime.lastError) {
-          console.error("[SalKal] Background message failed:", chrome.runtime.lastError.message);
+          console.error("[SalNavon] Background message failed:", chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
           return;
         }
         if (!response?.ok) {
-          console.error("[SalKal] Comparison failed:", response?.error || "Unknown error");
+          console.error("[SalNavon] Comparison failed:", response?.error || "Unknown error");
           reject(new Error(response?.error || "Unknown error from background"));
           return;
         }
@@ -1457,7 +1457,7 @@ async function run() {
     showResultWidget(data);
     setState(State.SHOWN);
   } catch (err) {
-    console.error("[SalKal] Comparison request failed:", err);
+    console.error("[SalNavon] Comparison request failed:", err);
     if (runId !== runVersion || state !== State.LOADING) return;
     showErrorWidget(
       err instanceof Error

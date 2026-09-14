@@ -1,5 +1,5 @@
 /**
- * Sal Kal — popup.js
+ * Sal Navon — popup.js
  *
  * Queries the active tab to determine whether the extension is active
  * (i.e. the current page is a supported supermarket cart page).
@@ -185,7 +185,7 @@ async function init() {
         siteLabel: getPageLabel(url),
         statusDescription: browserPage
           ? "זה דף של הדפדפן, לא עגלת קניות. פתח אחת מהרשתות הנתמכות מהרשימה למטה."
-          : "סל קל פועל כרגע רק בעגלות של הרשתות הנתמכות. אפשר לפתוח אחת מהרשימה למטה.",
+          : "סל נבון פועל כרגע רק בעגלות של הרשתות הנתמכות. אפשר לפתוח אחת מהרשימה למטה.",
       });
       return;
     }
@@ -229,19 +229,19 @@ async function init() {
       primary: { type: "retry", label: "נסה שוב" },
       secondary: activeTabId ? { type: "reload", label: "רענן עמוד", tabId: activeTabId } : null,
     });
-    console.error("[SalKal popup]", err);
+    console.error("[SalNavon popup]", err);
   }
 }
 
 document.getElementById("primary-action")?.addEventListener("click", () => {
   runAction(primaryAction).catch((err) => {
-    console.error("[SalKal popup action]", err);
+    console.error("[SalNavon popup action]", err);
   });
 });
 
 document.getElementById("secondary-action")?.addEventListener("click", () => {
   runAction(secondaryAction).catch((err) => {
-    console.error("[SalKal popup action]", err);
+    console.error("[SalNavon popup action]", err);
   });
 });
 
@@ -250,7 +250,7 @@ document.getElementById("store-list")?.addEventListener("click", (event) => {
   const button = target?.closest(".store-button");
   if (!button?.dataset.storeUrl) return;
   runAction({ type: "open-url", url: button.dataset.storeUrl }).catch((err) => {
-    console.error("[SalKal popup store]", err);
+    console.error("[SalNavon popup store]", err);
   });
 });
 
