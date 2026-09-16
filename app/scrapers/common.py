@@ -80,6 +80,27 @@ def _safe_float(
         return default
 
 
+def _truncate_log_value(value: Any, max_length: int = 120) -> str:
+    if value is None:
+        return ""
+    text = str(value).replace("\n", " ").replace("\r", " ").strip()
+    if len(text) <= max_length:
+        return text
+    return f"{text[: max_length - 3]}..."
+
+
+def _format_validation_errors(error: ValidationError) -> str:
+    parts = []
+    for detail in error.errors():
+        loc = ".".join(str(part) for part in detail.get("loc", ()))
+        error_type = detail.get("type", "validation_error")
+        message = detail.get("msg", "")
+        parts.append(
+            f"{loc}:{error_type}:{message}" if message else f"{loc}:{error_type}"
+        )
+    return _truncate_log_value(", ".join(parts), max_length=300)
+
+
 def _get_valid_tags(file_path: str) -> Set[str]:
     """Determine valid XML tags based on file path patterns."""
     path_lower = file_path.lower()
@@ -205,12 +226,11 @@ class CommonXMLScraper(BaseScraper):
         and builds Pydantic Product and Price objects.
         """
         barcode = findtext_multi(elem, "ItemCode")
-        price_value = _safe_float(findtext_multi(elem, "Price", "ItemPrice"))
+        raw_price = findtext_multi(elem, "Price", "ItemPrice")
+        price_value = _safe_float(raw_price)
         if price_value is None:
-            # Source rows with no price are not actionable; skip silently.
-            logger.debug(
-                "Skipping item with missing/invalid price (barcode=%r)", barcode
-            )
+            # Source rows with no price are not actionable; log and skip them.
+            self._log_skipped_item(elem, "missing_or_invalid_price")
             return None
 
         try:
@@ -244,11 +264,40 @@ class CommonXMLScraper(BaseScraper):
         except ValidationError as e:
             # Source data quality issues (bad barcode, missing fields, etc.) are
             # noisy but expected. Keep them out of ERROR-level logs.
-            logger.debug("Skipping invalid item (barcode=%r): %s", barcode, e)
+            self._log_skipped_item(
+                elem,
+                "validation_failed",
+                details=_format_validation_errors(e),
+            )
             return None
         except Exception as e:
-            logger.error("Error processing item (barcode=%r): %s", barcode, e)
+            self._log_skipped_item(
+                elem, "processing_error", details=str(e), level=logging.ERROR
+            )
             return None
+
+    def _log_skipped_item(
+        self,
+        elem: ET.Element,
+        reason: str,
+        details: Optional[str] = None,
+        level: int = logging.WARNING,
+    ) -> None:
+        logger.log(
+            level,
+            (
+                "Skipping item for %s: reason=%s line=%s barcode=%r name=%r "
+                "price=%r update_date=%r details=%r"
+            ),
+            self._chain_name,
+            reason,
+            getattr(elem, "sourceline", None),
+            _truncate_log_value(findtext_multi(elem, "ItemCode")),
+            _truncate_log_value(findtext_multi(elem, "ItemName", "ItemNm")),
+            _truncate_log_value(findtext_multi(elem, "Price", "ItemPrice")),
+            _truncate_log_value(findtext_multi(elem, "PriceUpdateDate")),
+            _truncate_log_value(details, max_length=300),
+        )
 
     def get_latest_file_url(self, file_type: FileType) -> Optional[str]:
         pass
