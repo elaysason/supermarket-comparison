@@ -1,36 +1,67 @@
-# Sal Navon / סל נבון
+<div align="center">
 
-אותו סל, פחות כסף.
+# Sal Navon · סל נבון
 
-Sal Navon helps shoppers compare an online grocery cart against supported Israeli
-supermarket chains and see where the same barcode-matched cart is cheaper,
-including delivery or pickup fees when data is available.
+**אותו סל, פחות כסף.**
 
-The project combines three pieces:
+Same cart. Less money.
 
-- A FastAPI comparison API in `app/api/`.
-- Chain scrapers in `app/scrapers/` that load public price XML feeds into
-  Supabase/Postgres.
-- A Chrome extension in `extension/` that reads the active cart and calls the
-  API.
+<img src="store-assets/promo-440x280.png" alt="Sal Navon — compare grocery prices directly from your shopping cart" width="440" height="280">
 
-Supported chains currently include Shufersal, Rami Levi, Yohananof, Hazi Hinam,
-and Carrefour.
+Compare your grocery cart across Israeli supermarket chains, right where you shop.
 
-## What It Does
+[Try the extension](#browser-extension) · [Local development](#local-development) · [Privacy policy](PRIVACY.md)
 
-The scrapers download each chain's store and price files, normalize products and
-prices, and upsert them into Postgres. The browser extension extracts cart
-barcodes and quantities from supported supermarket sites. The API compares the
-cart against configured online stores for competitor chains and returns the
-cheapest available option.
+</div>
 
-Comparison is barcode-based. Sal Navon does not guess substitutions. Items that do
-not exist in the shared matched set are returned as unmatched.
+## Your Cart, Compared
 
-Shipping and pickup costs are included when the chain has configured shipping
-rules. If the cart does not meet a chain's minimum order, that fulfillment option
-is returned as unavailable instead of being silently ignored.
+Already filled your online grocery cart? Sal Navon reads the products and
+quantities on supported cart pages and shows how their prices compare at other
+chains, without rebuilding your shopping list.
+
+- **Compare the same products.** Barcode matching, with no guessed substitutions.
+- **See delivery and pickup costs.** Fulfillment fees are included when available.
+- **Understand the gaps.** Unmatched items and minimum-order requirements are
+  surfaced alongside the comparison.
+- **Stay on the cart page.** The Chrome extension displays the comparison directly
+  on supported supermarket sites.
+
+## How It Works
+
+1. [Load the extension in Chrome](#browser-extension).
+2. Open your cart on Shufersal, Rami Levi, or Hazi Hinam.
+3. Review the comparison widget for prices, delivery or pickup options, and
+   missing items.
+
+### Supported Chains
+
+| Chain | Compare from its cart page | Price data collected |
+| --- | :---: | :---: |
+| Shufersal | ✓ | ✓ |
+| Rami Levi | ✓ | ✓ |
+| Hazi Hinam | ✓ | ✓ |
+| Carrefour | — | ✓ |
+| Yohananof | — | ✓ |
+
+Comparison availability depends on current price data and configured online
+stores. Products outside the shared barcode-matched set are shown as unmatched;
+delivery or pickup options below the minimum order are shown as unavailable.
+Final prices and fulfillment terms are determined by each supermarket.
+
+<details>
+<summary>See the extension in action</summary>
+
+![Sal Navon comparison widget on a Shufersal cart page, showing chain totals and delivery costs](store-assets/screenshot-1280x800.png)
+
+</details>
+
+## Under the Hood
+
+Chain-specific **Python scrapers** download public store and price XML feeds,
+normalize products and prices, and load them into **Supabase/Postgres**. A
+**FastAPI API** compares cart barcodes and quantities against configured online
+stores. The **Chrome extension** reads the active cart and displays the results.
 
 ## Repository Layout
 
