@@ -10,7 +10,9 @@ Same cart. Less money.
 
 Compare your grocery cart across Israeli supermarket chains, right where you shop.
 
-[Try the extension](#browser-extension) · [Local development](#local-development) · [Privacy policy](PRIVACY.md)
+[**Install from Chrome Web Store**](https://chromewebstore.google.com/detail/%D7%A1%D7%9C-%D7%A0%D7%91%D7%95%D7%9F/jkhkopflbogmpgkcgabmkmjfkbhbclcj?hl=iw)
+
+[Local development](#local-development) · [Privacy policy](PRIVACY.md)
 
 </div>
 
@@ -29,7 +31,7 @@ chains, without rebuilding your shopping list.
 
 ## How It Works
 
-1. [Load the extension in Chrome](#browser-extension).
+1. [Install Sal Navon from the Chrome Web Store](https://chromewebstore.google.com/detail/%D7%A1%D7%9C-%D7%A0%D7%91%D7%95%D7%9F/jkhkopflbogmpgkcgabmkmjfkbhbclcj?hl=iw).
 2. Open your cart on Shufersal, Rami Levi, or Hazi Hinam.
 3. Review the comparison widget for prices, delivery or pickup options, and
    missing items.
@@ -165,7 +167,9 @@ For Gmail, use an app password with `SMTP_HOST=smtp.gmail.com` and
 
 ## Browser Extension
 
-Load the extension locally:
+[Install from Chrome Web Store](https://chromewebstore.google.com/detail/%D7%A1%D7%9C-%D7%A0%D7%91%D7%95%D7%9F/jkhkopflbogmpgkcgabmkmjfkbhbclcj?hl=iw).
+
+For local development, load the extension from source:
 
 1. Open `chrome://extensions`.
 2. Enable Developer Mode.
