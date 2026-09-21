@@ -4,6 +4,7 @@ venv/
 .env
 
 chains_downloads/
+dist/
 
 __pycache__/
 *.pyc
